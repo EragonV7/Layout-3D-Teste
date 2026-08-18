@@ -1,35 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <style>body { margin: 0; overflow: hidden; background-color: #fff; }</style>
+    <style>
+        /* IMPORTANTE: Força o HTML e o Body a ocuparem 100% da tela */
+        html, body { 
+            width: 100%; 
+            height: 100%; 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #fff; 
+        }
+        canvas { 
+            width: 100% !important; 
+            height: 100% !important; 
+            display: block; 
+        }
+    </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- ADICIONADO: OrbitControls para mouse -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <script>
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xffffff);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({antialias: true});
+        
+        // Usa o tamanho atual da janela do navegador/iframe
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Adiciona luzes para dar profundidade (importante para não parecer plano)
         const light = new THREE.AmbientLight(0xffffff, 1);
         scene.add(light);
         const dirLight = new THREE.DirectionalLight(0xffffff, 1);
         dirLight.position.set(5, 5, 5);
         scene.add(dirLight);
 
-        // CONTROLES DE MOUSE (OrbitControls)
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         camera.position.set(5, 5, 5);
         controls.update();
 
         const loader = new THREE.GLTFLoader();
-        // Substitua pelo nome correto do seu arquivo .glb
+        // Mantenha o nome do seu arquivo .glb aqui
         loader.load('LAYOUT ESTOQUE 3D.glb', (gltf) => {
             const model = gltf.scene;
             scene.add(model);
@@ -46,9 +60,16 @@
             }
         });
 
+        // Garante que se o painel mudar de tamanho, o 3D se ajusta
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
         function animate() { 
             requestAnimationFrame(animate); 
-            controls.update(); // Necessário para OrbitControls
+            controls.update(); 
             renderer.render(scene, camera); 
         }
         animate();
