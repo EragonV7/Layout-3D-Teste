@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <style>
         /* IMPORTANTE: Força o HTML e o Body a ocuparem 100% da tela */
         html, body { 
@@ -43,7 +44,7 @@
         controls.update();
 
         const loader = new THREE.GLTFLoader();
-        // Mantenha o nome do seu arquivo .glb aqui
+        // Carrega o seu modelo 3D do galpão
         loader.load('LAYOUT ESTOQUE 3D.glb', (gltf) => {
             const model = gltf.scene;
             scene.add(model);
@@ -54,7 +55,22 @@
             if (endereco) {
                 model.traverse((child) => {
                     if (child.name === endereco) {
-                        child.material.color.set(0xff0000); // Destaca em vermelho
+                        // Clona o material para alterar apenas este objeto sem afetar os outros
+                        child.material = child.material.clone();
+                        
+                        // Cor vermelha viva e brilho emissivo (efeito neon)
+                        child.material.color.set(0xff0000); 
+                        child.material.emissive.set(0xff3300);
+                        child.material.emissiveIntensity = 0.8; 
+
+                        // Foca a câmera automaticamente no objeto selecionado
+                        const box = new THREE.Box3().setFromObject(child);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3()).length();
+
+                        controls.target.copy(center);
+                        camera.position.set(center.x + size * 1.5, center.y + size * 1.5, center.z + size * 1.5);
+                        controls.update();
                     }
                 });
             }
