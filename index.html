@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>body { margin: 0; overflow: hidden; background-color: #fff; }</style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.AmbientLight(0xffffff, 2);
+        scene.add(light);
+
+        let model;
+        const loader = new THREE.GLTFLoader();
+        // Substitua pelo nome do seu arquivo que estará no mesmo repositório
+        loader.load('LAYOUT ESTOQUE 3D.glb', (gltf) => {
+            model = gltf.scene;
+            scene.add(model);
+            
+            // Centralizar câmera
+            camera.position.z = 5;
+            
+            // --- A MÁGICA: VERIFICAR O ENDEREÇO DA URL ---
+            const params = new URLSearchParams(window.location.search);
+            const endereco = params.get('endereco');
+            
+            if (endereco) {
+                model.traverse((child) => {
+                    if (child.name === endereco) {
+                        child.material.color.set(0xff0000); // Destaca em vermelho
+                    }
+                });
+            }
+        });
+
+        function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); }
+        animate();
+    </script>
+</body>
+</html>
