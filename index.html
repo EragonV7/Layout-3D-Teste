@@ -4,6 +4,8 @@
     <style>body { margin: 0; overflow: hidden; background-color: #fff; }</style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- ADICIONADO: OrbitControls para mouse -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <script>
@@ -14,20 +16,24 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.AmbientLight(0xffffff, 2);
+        // Adiciona luzes para dar profundidade (importante para não parecer plano)
+        const light = new THREE.AmbientLight(0xffffff, 1);
         scene.add(light);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(5, 5, 5);
+        scene.add(dirLight);
 
-        let model;
+        // CONTROLES DE MOUSE (OrbitControls)
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        camera.position.set(5, 5, 5);
+        controls.update();
+
         const loader = new THREE.GLTFLoader();
-        // Substitua pelo nome do seu arquivo que estará no mesmo repositório
+        // Substitua pelo nome correto do seu arquivo .glb
         loader.load('LAYOUT ESTOQUE 3D.glb', (gltf) => {
-            model = gltf.scene;
+            const model = gltf.scene;
             scene.add(model);
             
-            // Centralizar câmera
-            camera.position.z = 5;
-            
-            // --- A MÁGICA: VERIFICAR O ENDEREÇO DA URL ---
             const params = new URLSearchParams(window.location.search);
             const endereco = params.get('endereco');
             
@@ -40,7 +46,11 @@
             }
         });
 
-        function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); }
+        function animate() { 
+            requestAnimationFrame(animate); 
+            controls.update(); // Necessário para OrbitControls
+            renderer.render(scene, camera); 
+        }
         animate();
     </script>
 </body>
