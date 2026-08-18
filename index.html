@@ -3,18 +3,31 @@
 <head>
     <meta charset="utf-8">
     <style>
-        /* IMPORTANTE: Força o HTML e o Body a ocuparem 100% da tela */
         html, body { 
             width: 100%; 
             height: 100%; 
             margin: 0; 
             overflow: hidden; 
             background-color: #fff; 
+            font-family: sans-serif;
         }
         canvas { 
             width: 100% !important; 
             height: 100% !important; 
             display: block; 
+        }
+        /* Estilo do Tooltip flutuante ao passar o mouse */
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -22,13 +35,13 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
+    <div id="tooltip"></div>
+
     <script>
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xffffff);
         
-        // Usa o tamanho atual da janela do navegador/iframe
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
@@ -43,27 +56,28 @@
         camera.position.set(5, 5, 5);
         controls.update();
 
+        let loadedModel = null;
         const loader = new THREE.GLTFLoader();
-        // Carrega o seu modelo 3D do galpão
+        
         loader.load('LAYOUT ESTOQUE 3D.glb', (gltf) => {
-            const model = gltf.scene;
-            scene.add(model);
+            loadedModel = gltf.scene;
+            scene.add(loadedModel);
             
+            // --- TRatAMENTO DO FILTRO VINDO DO POWER BI ---
             const params = new URLSearchParams(window.location.search);
-            const endereco = params.get('endereco');
+            const enderecoFiltro = params.get('endereco');
             
-            if (endereco) {
-                model.traverse((child) => {
-                    if (child.name === endereco) {
-                        // Clona o material para alterar apenas este objeto sem afetar os outros
+            if (enderecoFiltro) {
+                const buscaLimpa = enderecoFiltro.trim().toLowerCase();
+                
+                loadedModel.traverse((child) => {
+                    if (child.name && child.name.trim().toLowerCase() === buscaLimpa) {
                         child.material = child.material.clone();
-                        
-                        // Cor vermelha viva e brilho emissivo (efeito neon)
                         child.material.color.set(0xff0000); 
                         child.material.emissive.set(0xff3300);
                         child.material.emissiveIntensity = 0.8; 
 
-                        // Foca a câmera automaticamente no objeto selecionado
+                        // Foca a câmera no objeto encontrado
                         const box = new THREE.Box3().setFromObject(child);
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3()).length();
@@ -76,7 +90,36 @@
             }
         });
 
-        // Garante que se o painel mudar de tamanho, o 3D se ajusta
+        // --- INTERATIVIDADE: TOOLTIP AO PASSAR O MOUSE ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+
+        window.addEventListener('mousemove', (event) => {
+            if (!loadedModel) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(loadedModel.children, true);
+
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                // Se o objeto tiver nome válido cadastrado no Blender
+                if (obj.name && obj.name.trim() !== "") {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (event.clientX + 15) + 'px';
+                    tooltip.style.top = (event.clientY + 15) + 'px';
+                    tooltip.innerHTML = `Endereço: <b>${obj.name}</b>`;
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
