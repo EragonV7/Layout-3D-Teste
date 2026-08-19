@@ -1,136 +1,247 @@
 <!DOCTYPE html>
-<html>
+<html lang='pt-BR'>
 <head>
-    <meta charset="utf-8">
+    <meta charset='UTF-8'>
     <style>
-        html, body { 
-            width: 100%; 
-            height: 100%; 
-            margin: 0; 
-            overflow: hidden; 
-            background-color: #fff; 
-            font-family: sans-serif;
-        }
-        canvas { 
-            width: 100% !important; 
-            height: 100% !important; 
-            display: block; 
-        }
-        /* Estilo do Tooltip flutuante ao passar o mouse */
-        #tooltip {
-            position: absolute;
-            display: none;
-            background: rgba(0, 0, 0, 0.85);
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
+        body { margin: 0; overflow: hidden; background-color: #ffffff; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #botoes-camera { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 5px; flex-wrap: wrap; max-width: 400px; }
+        .btn { background: #252423; color: #fff; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 12px; transition: background 0.3s ease; }
+        .btn:hover { background: #0078D4; }
+        #btn-modo { background: #8e44ad; }
+        #btn-modo:hover { background: #9b59b6; }
+        #btn-fps { background: #16a085; }
+        #btn-fps:hover { background: #1abc9c; }
+        #hud-container { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.95); padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); z-index: 40; display: flex; gap: 30px; border-top: 4px solid #0078D4; align-items: flex-start; }
+        .hud-item { text-align: center; min-width: 120px; }
+        .hud-titulo { font-size: 11px; color: #6b6b6b; text-transform: uppercase; font-weight: 700; }
+        .hud-valor { font-size: 22px; color: #252423; font-weight: 800; margin-top: 4px; }
+        .hud-progress-bg { width: 100%; height: 6px; background-color: #e0e0e0; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+        .hud-progress-bar { height: 100%; width: 0%; border-radius: 4px; transition: width 1s ease; }
+        #aviso-fps { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 12px; z-index: 50; display: none; }
+        #tooltip { position: absolute; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 6px 10px; border-radius: 4px; display: none; pointer-events: none; z-index: 20; font-size: 13px; }
+        #legenda { position: absolute; bottom: 15px; left: 15px; z-index: 10; background: rgba(255,255,255,0.92); padding: 10px 14px; border-radius: 6px; font-size: 12px; }
+        #legenda .item { display: flex; align-items: center; margin-bottom: 4px; }
+        #legenda .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; display: inline-block; }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
-    <div id="tooltip"></div>
+    <div id='botoes-camera'>
+        <button class='btn' id='btn-frente'>Frente</button>
+        <button class='btn' id='btn-topo'>Topo</button>
+        <button class='btn' id='btn-lado'>Lado</button>
+        <button class='btn' id='btn-modo'>Modo: Status</button>
+        <button class='btn' id='btn-fps'>Visão: 1ª Pessoa</button>
+    </div>
 
-    <script>
+    <div id='hud-container'>
+        <div class='hud-item'>
+            <div class='hud-titulo'>Ocupação Global</div>
+            <div class='hud-valor' id='hud-ocupacao'>--%</div>
+            <div class='hud-progress-bg'><div class='hud-progress-bar' id='hud-ocupacao-bar'></div></div>
+        </div>
+        <div class='hud-item' style='display: flex; flex-direction: column; justify-content: center;'>
+            <div class='hud-titulo'>Posições Mapeadas</div>
+            <div class='hud-valor' id='hud-posicoes'>--</div>
+        </div>
+    </div>
+
+    <div id='aviso-fps'>🚶 <b>Modo Pedestre Ativo</b><br>• Use WASD/Setas para caminhar.<br>• Clique e arraste para olhar.</div>
+    
+    <div id='legenda'>
+        <div id='legenda-status'>
+            <div class='item'><span class='dot' style='background:#2ecc71'></span>OK</div>
+            <div class='item'><span class='dot' style='background:#f1c40f'></span>Baixo</div>
+            <div class='item'><span class='dot' style='background:#e74c3c'></span>Crítico</div>
+        </div>
+    </div>
+    
+    <div id='tooltip'></div>
+    <div id='canvas-container'></div>
+
+    <script type='module'>
+        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+        import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+
+        const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xffffff);
+        scene.background = new THREE.Color(0xf0f0f0);
         
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        container.appendChild(renderer.domElement);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
 
-        const light = new THREE.AmbientLight(0xffffff, 1);
-        scene.add(light);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(5, 5, 5);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+        dirLight.position.set(50, 100, 50);
         scene.add(dirLight);
 
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        camera.position.set(5, 5, 5);
-        controls.update();
+        let modeloGeral = null;
+        let centroGeral = new THREE.Vector3();
+        let tamanhoMax = 0;
+        let chaoY = 0;
+        let gruposGerais = {}; 
+        const objetosCriticos = [];
+        let modoVisualizacao = 'STATUS'; 
 
-        let loadedModel = null;
-        const loader = new THREE.GLTFLoader();
-        
-        loader.load('LAYOUT ESTOQUE 3D.glb', (gltf) => {
-            loadedModel = gltf.scene;
-            scene.add(loadedModel);
-            
-            // --- TRatAMENTO DO FILTRO VINDO DO POWER BI ---
-            const params = new URLSearchParams(window.location.search);
-            const enderecoFiltro = params.get('endereco');
-            
-            if (enderecoFiltro) {
-                const buscaLimpa = enderecoFiltro.trim().toLowerCase();
+        // --- VARIÁVEIS QUE VÃO RECEBER OS DADOS DO POWER BI ---
+        let dadosEstoque = [];
+        let dadosMap = {};
+        let listaSelecionadosLimpos = [];
+
+        // ESCUTAR O POWER BI
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.tipo === 'dadosPowerBI') {
+                dadosEstoque = event.data.dadosEstoque;
                 
-                loadedModel.traverse((child) => {
-                    if (child.name && child.name.trim().toLowerCase() === buscaLimpa) {
-                        child.material = child.material.clone();
-                        child.material.color.set(0xff0000); 
-                        child.material.emissive.set(0xff3300);
-                        child.material.emissiveIntensity = 0.8; 
+                const textoSelecionados = event.data.selecionados || '';
+                const listaSel = textoSelecionados !== '' ? textoSelecionados.split(',').map(s => s.trim()) : [];
+                listaSelecionadosLimpos = listaSel.map(s => extrairEndereco(s) || s);
 
-                        // Foca a câmera no objeto encontrado
-                        const box = new THREE.Box3().setFromObject(child);
-                        const center = box.getCenter(new THREE.Vector3());
-                        const size = box.getSize(new THREE.Vector3()).length();
-
-                        controls.target.copy(center);
-                        camera.position.set(center.x + size * 1.5, center.y + size * 1.5, center.z + size * 1.5);
-                        controls.update();
-                    }
-                });
+                processarDados();
+                if (modeloGeral) atualizarCoresEVisibilidade();
             }
         });
 
-        // --- INTERATIVIDADE: TOOLTIP AO PASSAR O MOUSE ---
+        function toNumber(val) { return parseFloat(val?.toString().replace(',', '.')) || 0; }
+        function extrairEndereco(nome) { const m = nome?.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); return m ? m[1] : null; }
+        function getEnderecoDaHierarquia(obj) { let atual = obj; while(atual) { const end = extrairEndereco(atual.name); if (end) return end; atual = atual.parent; } return null; }
+
+        function processarDados() {
+            let totalEstoque = 0; let totalCap = 0; let count = 0;
+            dadosEstoque.forEach(d => { 
+                const endLimpo = extrairEndereco(d.endereco) || d.endereco;
+                dadosMap[endLimpo] = d; 
+                totalEstoque += toNumber(d.estoque);
+                totalCap += toNumber(d.capacidade);
+                count++;
+            });
+
+            const ocupacao = totalCap > 0 ? ((totalEstoque / totalCap) * 100).toFixed(1) : 0;
+            let corHUD = ocupacao >= 80 ? '#e74c3c' : (ocupacao >= 50 ? '#f39c12' : '#2ecc71');
+
+            document.getElementById('hud-ocupacao').innerText = ocupacao + '%';
+            document.getElementById('hud-ocupacao').style.color = corHUD;
+            document.getElementById('hud-ocupacao-bar').style.width = Math.min(ocupacao, 100) + '%';
+            document.getElementById('hud-ocupacao-bar').style.backgroundColor = corHUD;
+            document.getElementById('hud-posicoes').innerText = count;
+        }
+
+        function corPorStatus(status) {
+            const s = (status || '').toUpperCase();
+            if (s === 'CRITICO' || s === 'CRÍTICO') return 0xe74c3c;
+            if (s === 'BAIXO') return 0xf1c40f;
+            return 0x2ecc71; 
+        }
+
+        function applyMaterialColor(mesh, hexColor) {
+            if (!mesh.material) return;
+            mesh.material = Array.isArray(mesh.material) ? mesh.material.map(m => { const nm = m.clone(); if(nm.color) nm.color.setHex(hexColor); return nm; }) : (() => { const m = mesh.material.clone(); if(m.color) m.color.setHex(hexColor); return m; })();
+        }
+
+        function applyEmissive(mesh, hexColor, intensity) {
+            if (!mesh.material) return;
+            if (Array.isArray(mesh.material)) { mesh.material.forEach(m => { if(m.emissive) { m.emissive.setHex(hexColor); m.emissiveIntensity = intensity; }}); }
+            else { if(mesh.material.emissive) { mesh.material.emissive.setHex(hexColor); mesh.material.emissiveIntensity = intensity; } }
+        }
+
+        function atualizarCoresEVisibilidade() {
+            objetosCriticos.length = 0; 
+            Object.keys(dadosMap).forEach(endLimpo => {
+                const dado = dadosMap[endLimpo];
+                const meshes = gruposGerais[endLimpo];
+                if (!meshes) return;
+
+                const cor = corPorStatus(dado.status);
+                const ehCritico = (dado.status.toUpperCase() === 'CRITICO');
+
+                meshes.forEach(m => {
+                    applyMaterialColor(m, cor);
+                    if (ehCritico) objetosCriticos.push(m);
+                    if (listaSelecionadosLimpos.includes(endLimpo)) applyEmissive(m, 0xffffff, 0.6);
+                    else applyEmissive(m, 0x000000, 0);
+                });
+            });
+        }
+
+        const loader = new GLTFLoader();
+        loader.load(
+            'LAYOUT ESTOQUE 3D.glb', 
+            function (gltf) {
+                modeloGeral = gltf.scene;
+                scene.add(modeloGeral);
+
+                const box = new THREE.Box3().setFromObject(modeloGeral);
+                box.getCenter(centroGeral);
+                chaoY = box.min.y;
+                tamanhoMax = Math.max(...box.getSize(new THREE.Vector3()).toArray());
+
+                controls.target.copy(centroGeral);
+                camera.position.set(centroGeral.x + tamanhoMax/2, centroGeral.y + tamanhoMax/2, centroGeral.z + tamanhoMax/2);
+                camera.lookAt(centroGeral);
+
+                modeloGeral.traverse(child => {
+                    if (!child.isMesh) return;
+                    const endLimpo = getEnderecoDaHierarquia(child);
+                    if (!endLimpo) return;
+                    if (!gruposGerais[endLimpo]) gruposGerais[endLimpo] = [];
+                    gruposGerais[endLimpo].push(child);
+                });
+
+                if (Object.keys(dadosMap).length > 0) atualizarCoresEVisibilidade();
+            }
+        );
+
+        let piscaLigado = false;
+        setInterval(() => {
+            piscaLigado = !piscaLigado;
+            objetosCriticos.forEach(obj => {
+                const endLimpo = getEnderecoDaHierarquia(obj);
+                if (!listaSelecionadosLimpos.includes(endLimpo)) applyEmissive(obj, piscaLigado ? 0xff0000 : 0x000000, piscaLigado ? 0.9 : 0);
+            });
+        }, 500);
+
+        // Tooltip Interativo
         const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
+        const mouse = new THREE.Vector2(-2, -2);
         const tooltip = document.getElementById('tooltip');
 
-        window.addEventListener('mousemove', (event) => {
-            if (!loadedModel) return;
-
+        window.addEventListener('mousemove', function (event) {
+            if (!modeloGeral) return;
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(loadedModel.children, true);
-
-            if (intersects.length > 0) {
-                const obj = intersects[0].object;
-                // Se o objeto tiver nome válido cadastrado no Blender
-                if (obj.name && obj.name.trim() !== "") {
-                    tooltip.style.display = 'block';
-                    tooltip.style.left = (event.clientX + 15) + 'px';
-                    tooltip.style.top = (event.clientY + 15) + 'px';
-                    tooltip.innerHTML = `Endereço: <b>${obj.name}</b>`;
-                } else {
-                    tooltip.style.display = 'none';
+            const intersects = raycaster.intersectObject(modeloGeral, true);
+            
+            let endEncontrado = null;
+            for (let i = 0; i < intersects.length; i++) {
+                if (intersects[i].object.visible) {
+                    endEncontrado = getEnderecoDaHierarquia(intersects[i].object);
+                    if (endEncontrado) break;
                 }
+            }
+
+            if (endEncontrado && dadosMap[endEncontrado]) {
+                const dado = dadosMap[endEncontrado];
+                tooltip.style.display = 'block';
+                tooltip.style.left = (event.clientX + 15) + 'px';
+                tooltip.style.top = (event.clientY + 15) + 'px';
+                const pct = dado.capacidade > 0 ? ((dado.estoque / dado.capacidade) * 100).toFixed(0) : 0;
+                tooltip.innerHTML = `<b>${dado.endereco}</b><br>Produto: ${dado.produto}<br>Ocupação: ${pct}%`;
+                document.body.style.cursor = 'pointer';
             } else {
                 tooltip.style.display = 'none';
+                document.body.style.cursor = 'default';
             }
         });
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        function animate() { 
-            requestAnimationFrame(animate); 
-            controls.update(); 
-            renderer.render(scene, camera); 
-        }
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
         animate();
     </script>
 </body>
