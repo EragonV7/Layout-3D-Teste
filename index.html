@@ -16,8 +16,8 @@
         .btn-toggle-ativo { background: #107c41 !important; } 
         .btn-status { background: #8e44ad; } 
 
-        /* HUD Global - Movido para a DIREITA para não encavalar nos botões */
-        #hud-topo { position: absolute; top: 15px; right: 15px; background: #252423; display: flex; gap: 25px; padding: 12px 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 20; border-bottom: 4px solid #0078D4; }
+        /* HUD Global - Forçado para a DIREITA com !important para quebrar o cache do PBI */
+        #hud-topo { position: absolute !important; top: 15px !important; right: 15px !important; left: auto !important; transform: none !important; background: #252423; display: flex; gap: 25px; padding: 12px 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 20; border-bottom: 4px solid #0078D4; }
         .hud-box { text-align: center; color: #fff; min-width: 80px; }
         .hud-box .titulo { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; font-weight: bold; }
         .hud-box .valor { font-size: 20px; font-weight: bold; }
@@ -32,8 +32,8 @@
         .tt-label { color: #666; }
         .tt-value { font-weight: bold; color: #111; text-align: right; margin-left: 20px; }
 
-        /* Painel Lateral KPI - Movido mais para baixo (top: 95px) para ficar abaixo do HUD */
-        #painel-kpi { position: absolute; top: 95px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.3); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
+        /* Painel Lateral KPI - Forçado abaixo do HUD */
+        #painel-kpi { position: absolute !important; top: 95px !important; right: 15px !important; left: auto !important; transform: none !important; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.3); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
         #painel-kpi .cabecalho { background: #f8f9fa; color: #333; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid #eee; }
         #painel-kpi .fechar { cursor: pointer; font-size: 20px; color: #999; line-height: 1; }
         #painel-kpi .fechar:hover { color: #e74c3c; }
@@ -130,7 +130,6 @@
             if (event.data && event.data.tipo === 'dadosPowerBI') {
                 
                 let payload = event.data.dadosEstoque;
-                
                 if (typeof payload === 'string') {
                     try { payload = JSON.parse(payload); } catch(e) { console.warn("Erro ao ler JSON", e); }
                 }
@@ -146,12 +145,8 @@
                         const enderecoRaw = d['endereco'] || d['endereço'] || '';
                         
                         if(enderecoRaw) {
-                            // AQUI ESTÁ A MÁGICA: Extrai só o "A01-N01" mesmo que o PBI mande "IfcBuildingElementProxyA01-N01"
-                            const regex = /([A-Z]\d{2}-N\d{2})/i;
-                            const match = enderecoRaw.toString().match(regex);
-                            
-                            // Se encontrar o padrão A01-N01 usa ele, se não usa a string limpa
-                            const endKey = match ? match[1].toUpperCase() : enderecoRaw.toString().replace(/\s/g, '').toUpperCase();
+                            // Salva a string EXATAMENTE como vem do Power BI, só forçando maiúsculo
+                            const endKey = enderecoRaw.toString().trim().toUpperCase();
                             
                             const extrairNum = (v) => {
                                 if(v == null) return 0;
@@ -161,6 +156,7 @@
                             };
 
                             dadosMap[endKey] = {
+                                originalName: enderecoRaw.toString(),
                                 produto: d['produto'] || 'N/A',
                                 estoque: extrairNum(d['estoque']),
                                 capacidade: extrairNum(d['capacidade']),
@@ -173,12 +169,7 @@
                 
                 let sel = event.data.selecionados;
                 if (sel && typeof sel === 'string' && sel.trim() !== "") {
-                    // Também filtra as seleções para usar apenas a parte A01-N01
-                    arrSelecionados = sel.split(',').map(s => {
-                        const str = s.trim().toUpperCase();
-                        const match = str.match(/([A-Z]\d{2}-N\d{2})/);
-                        return match ? match[1] : str;
-                    });
+                    arrSelecionados = sel.split(',').map(s => s.trim().toUpperCase());
                 } else {
                     arrSelecionados = [];
                 }
@@ -265,21 +256,49 @@
             return 0x2ecc71; 
         }
 
-        function extrairEndereco(nome) { 
-            if (!nome) return null;
-            const m = nome.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); 
-            if (m) return m[1];
-            return null; 
-        }
-
+        // Pega o nome COMPLETO do objeto 3D se ele for uma prateleira
         function getEnderecoDaHierarquia(obj) { 
             let atual = obj; 
             while(atual) { 
-                const end = extrairEndereco(atual.name); 
-                if (end) return end; 
+                if (atual.name) {
+                    const upper = atual.name.toUpperCase();
+                    // Identifica se é prateleira se tiver o padrão A01-N01 no nome
+                    if (upper.match(/([A-Z]\d{2}-N\d{2})/)) {
+                        return upper;
+                    }
+                }
                 atual = atual.parent; 
             } 
             return null; 
+        }
+
+        // Sistema Triplo de Busca de Dados (Garante que nunca vai falhar a ligação PBI <> 3D)
+        function buscarDadosSeguro(nome3D) {
+            if(!nome3D) return null;
+            
+            // 1. Tenta achar o nome exato
+            if (dadosMap[nome3D]) return dadosMap[nome3D];
+
+            // 2. Tenta achar por inclusão (se um nome está dentro do outro)
+            for (let key in dadosMap) {
+                if (key.includes(nome3D) || nome3D.includes(key)) {
+                    return dadosMap[key];
+                }
+            }
+
+            // 3. Tenta achar extraindo apenas o A01-N01 (Último recurso)
+            const regex = /([A-Z]\d{2}-N\d{2})/;
+            const match3D = nome3D.match(regex);
+            if (match3D) {
+                for (let key in dadosMap) {
+                    const matchPBI = key.match(regex);
+                    if (matchPBI && matchPBI[1] === match3D[1]) {
+                        return dadosMap[key];
+                    }
+                }
+            }
+
+            return null;
         }
 
         // --- 5. APLICAR FILTROS (CORREÇÃO DO VISUAL) ---
@@ -289,11 +308,24 @@
             modeloGeral.traverse(child => {
                 if (!child.isMesh) return;
                 
-                const end = getEnderecoDaHierarquia(child);
-                if (!end) return;
+                const endFull = getEnderecoDaHierarquia(child);
+                if (!endFull) return;
 
-                const endUpper = end.toUpperCase();
-                const estaSelecionado = arrSelecionados.length === 0 || arrSelecionados.some(sel => sel.includes(endUpper) || endUpper.includes(sel));
+                let estaSelecionado = false;
+                if (arrSelecionados.length === 0) {
+                    estaSelecionado = true;
+                } else {
+                    // Busca refinada para filtros
+                    const regex = /([A-Z]\d{2}-N\d{2})/;
+                    const matchEnd = endFull.match(regex);
+                    
+                    estaSelecionado = arrSelecionados.some(sel => {
+                        if (sel === endFull || endFull.includes(sel) || sel.includes(endFull)) return true;
+                        const matchSel = sel.match(regex);
+                        if (matchEnd && matchSel && matchEnd[1] === matchSel[1]) return true;
+                        return false;
+                    });
+                }
 
                 if (!estaSelecionado) {
                     child.material.transparent = true;
@@ -305,8 +337,10 @@
                     child.material.opacity = 1.0;
                     child.material.depthWrite = true;
 
-                    if (modoStatusAtivo && dadosMap[endUpper]) {
-                        const corHex = corPorStatus(dadosMap[endUpper].status);
+                    const info = buscarDadosSeguro(endFull);
+
+                    if (modoStatusAtivo && info) {
+                        const corHex = corPorStatus(info.status);
                         child.material.color.setHex(corHex);
                     } else {
                         if (child.userData.corOriginal !== undefined) {
@@ -334,16 +368,19 @@
                 if (child.isMesh) {
                     const end = getEnderecoDaHierarquia(child);
                     if (end) {
-                        const letra = end.charAt(0).toUpperCase(); 
-                        if (dadosPorLetra[letra]) {
-                            const pos = new THREE.Vector3();
-                            child.getWorldPosition(pos);
-                            dadosPorLetra[letra].soma.add(pos);
-                            dadosPorLetra[letra].count++;
+                        const match = end.match(/([A-Z])\d{2}-N\d{2}/);
+                        if (match) {
+                            const letra = match[1].toUpperCase(); 
+                            if (dadosPorLetra[letra]) {
+                                const pos = new THREE.Vector3();
+                                child.getWorldPosition(pos);
+                                dadosPorLetra[letra].soma.add(pos);
+                                dadosPorLetra[letra].count++;
 
-                            const box = new THREE.Box3().setFromObject(child);
-                            if (box.max.y > dadosPorLetra[letra].maxY) {
-                                dadosPorLetra[letra].maxY = box.max.y;
+                                const box = new THREE.Box3().setFromObject(child);
+                                if (box.max.y > dadosPorLetra[letra].maxY) {
+                                    dadosPorLetra[letra].maxY = box.max.y;
+                                }
                             }
                         }
                     }
@@ -381,28 +418,32 @@
             const intersects = raycaster.intersectObjects(modeloGeral.children, true);
 
             if (intersects.length > 0) {
-                let end = null;
+                let endFull = null;
                 for (let i = 0; i < intersects.length; i++) {
-                    end = getEnderecoDaHierarquia(intersects[i].object);
-                    if (end) break;
+                    endFull = getEnderecoDaHierarquia(intersects[i].object);
+                    if (endFull) break;
                 }
 
-                if (end) {
-                    const endFormatado = end.toUpperCase();
-                    // Agora sim as chaves vão bater!
-                    const info = dadosMap[endFormatado] || { produto: 'N/A', estoque: 0, capacidade: 0, status: 'Sem Info' };
+                if (endFull) {
+                    // Usa o novo sistema de busca blindado
+                    const info = buscarDadosSeguro(endFull) || { produto: 'N/A', estoque: 0, capacidade: 0, status: 'Sem Info' };
                     
                     const cap = Number(info.capacidade) || 0;
                     const est = Number(info.estoque) || 0;
                     const pct = cap > 0 ? Math.round((est / cap) * 100) : 0;
                     const corBarra = pct > 90 ? '#e74c3c' : (pct > 50 ? '#f1c40f' : '#2ecc71');
 
+                    // Formata visualmente o título do Tooltip para ficar bonito (A01-N01) ao invés do palavrão do IFC
+                    let tituloVisual = endFull;
+                    const matchVisual = endFull.match(/([A-Z]\d{2}-N\d{2})/);
+                    if(matchVisual) tituloVisual = matchVisual[1];
+
                     tooltip.style.display = 'block';
                     tooltip.style.left = (e.clientX + 15) + 'px';
                     tooltip.style.top = (e.clientY + 15) + 'px';
                     
                     tooltip.innerHTML = `
-                        <div class="tt-header">${endFormatado}</div>
+                        <div class="tt-header">${tituloVisual}</div>
                         <div class="tt-line"><span class="tt-label">Produto</span><span class="tt-value">${info.produto}</span></div>
                         <div class="tt-line"><span class="tt-label">Estoque</span><span class="tt-value">${info.estoque}</span></div>
                         <div class="tt-line"><span class="tt-label">Capacidade</span><span class="tt-value">${info.capacidade}</span></div>
@@ -427,20 +468,26 @@
             const intersects = raycaster.intersectObjects(modeloGeral.children, true);
 
             if (intersects.length > 0) {
-                let end = null;
+                let endFull = null;
                 for (let i = 0; i < intersects.length; i++) {
-                    end = getEnderecoDaHierarquia(intersects[i].object);
-                    if (end) break;
+                    endFull = getEnderecoDaHierarquia(intersects[i].object);
+                    if (endFull) break;
                 }
 
-                if (end) {
-                    exibirKPI(end.toUpperCase(), dadosMap[end.toUpperCase()] || {});
+                if (endFull) {
+                    const info = buscarDadosSeguro(endFull) || {};
+                    
+                    let tituloVisual = endFull;
+                    const matchVisual = endFull.match(/([A-Z]\d{2}-N\d{2})/);
+                    if(matchVisual) tituloVisual = matchVisual[1];
+
+                    exibirKPI(tituloVisual, info);
                 }
             }
         });
 
-        function exibirKPI(endereco, d) {
-            document.getElementById('kpi-endereco').innerText = endereco;
+        function exibirKPI(enderecoVisual, d) {
+            document.getElementById('kpi-endereco').innerText = enderecoVisual;
             document.getElementById('kpi-produto').innerText = d.produto || 'N/A';
             document.getElementById('kpi-estoque').innerText = d.estoque ?? 0;
             document.getElementById('kpi-capacidade').innerText = d.capacidade ?? 0;
