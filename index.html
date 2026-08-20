@@ -15,10 +15,10 @@
         .btn-status { background: #8e44ad; } 
 
         /* Placas de Corredor (CSS2D) */
-        .placa-corredor { background: rgba(0, 0, 0, 0.75); color: #ffffff; padding: 5px 12px; border-radius: 5px; font-weight: bold; font-size: 15px; border: 1px solid #ffffff; pointer-events: none; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .placa-corredor { background: rgba(0, 0, 0, 0.85); color: #ffffff; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 16px; border: 2px solid #0078D4; pointer-events: none; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
 
         /* Tooltip */
-        #tooltip { position: absolute; background: rgba(0,0,0,0.85); color: #fff; padding: 10px; border-radius: 5px; display: none; pointer-events: none; z-index: 20; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        #tooltip { position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 10px 14px; border-radius: 6px; display: none; pointer-events: none; z-index: 50; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 8px rgba(0,0,0,0.4); border-left: 3px solid #0078D4; }
 
         /* Painel KPI */
         #painel-kpi { position: absolute; top: 15px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.4); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
@@ -81,7 +81,7 @@
                 }
                 
                 if (event.data.selecionados && event.data.selecionados.trim() !== "") {
-                    arrSelecionados = event.data.selecionados.split(',');
+                    arrSelecionados = event.data.selecionados.split(',').map(s => s.trim());
                 } else {
                     arrSelecionados = [];
                 }
@@ -103,7 +103,7 @@
         labelRenderer.setSize(window.innerWidth, window.innerHeight);
         labelRenderer.domElement.style.position = 'absolute';
         labelRenderer.domElement.style.top = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none';
+        labelRenderer.domElement.style.pointerEvents = 'none'; // Não intercepta o mouse
         document.body.appendChild(labelRenderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -151,7 +151,6 @@
                 if (child.isMesh) {
                     child.material = child.material.clone();
                     child.userData.corOriginal = child.material.color.getHex();
-                    child.material.transparent = true;
                 }
             });
 
@@ -168,7 +167,8 @@
         }
 
         function extrairEndereco(nome) { 
-            const m = nome?.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); 
+            if (!nome) return null;
+            const m = nome.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); 
             return m ? m[1] : null; 
         }
 
@@ -191,10 +191,17 @@
                 const end = getEnderecoDaHierarquia(child);
                 if (!end) return;
 
-                if (arrSelecionados.length > 0 && !arrSelecionados.includes(end)) {
-                    child.material.opacity = 0.1;
+                // Valida se o elemento do 3D está na lista selecionada no Power BI
+                const estaSelecionado = arrSelecionados.length === 0 || arrSelecionados.some(sel => sel.includes(end) || end.includes(sel));
+
+                if (!estaSelecionado) {
+                    child.material.transparent = true;
+                    child.material.opacity = 0.12;
+                    child.material.depthWrite = false; // CORRIGE O EFEITO "ZUADO" NA TRANSPARÊNCIA
                 } else {
+                    child.material.transparent = false;
                     child.material.opacity = 1.0;
+                    child.material.depthWrite = true; // RESTAURA PROFUNDIDADE NORMAL
                 }
 
                 if (modoStatusAtivo && dadosMap[end]) {
@@ -208,55 +215,64 @@
             });
         }
 
-        // --- 5. PLACAS DOS CORREDORES ---
+        // --- 5. PLACAS DOS CORREDORES (Apenas Corredor A, B, C) ---
         function criarPlacasCorredor() {
             placasGeral.forEach(p => scene.remove(p));
             placasGeral = [];
 
-            const posicoesPorPrefixo = {};
+            const posicoesPorLetra = {};
 
             modeloGeral.traverse(child => {
                 if (child.isMesh) {
                     const end = getEnderecoDaHierarquia(child);
                     if (end) {
-                        const prefixo = end.split('-')[0];
-                        if (!posicoesPorPrefixo[prefixo]) {
-                            posicoesPorPrefixo[prefixo] = { soma: new THREE.Vector3(), contador: 0, maxY: -Infinity };
-                        }
-                        const pos = new THREE.Vector3();
-                        child.getWorldPosition(pos);
-                        posicoesPorPrefixo[prefixo].soma.add(pos);
-                        posicoesPorPrefixo[prefixo].contador++;
+                        // Pega apenas a Letra principal (A, B ou C)
+                        const letra = end.charAt(0).toUpperCase(); 
+                        if (['A', 'B', 'C'].includes(letra)) {
+                            if (!posicoesPorLetra[letra]) {
+                                posicoesPorLetra[letra] = { soma: new THREE.Vector3(), contador: 0, maxY: -Infinity };
+                            }
+                            const pos = new THREE.Vector3();
+                            child.getWorldPosition(pos);
+                            posicoesPorLetra[letra].soma.add(pos);
+                            posicoesPorLetra[letra].contador++;
 
-                        const box = new THREE.Box3().setFromObject(child);
-                        if (box.max.y > posicoesPorPrefixo[prefixo].maxY) {
-                            posicoesPorPrefixo[prefixo].maxY = box.max.y;
+                            const box = new THREE.Box3().setFromObject(child);
+                            if (box.max.y > posicoesPorLetra[letra].maxY) {
+                                posicoesPorLetra[letra].maxY = box.max.y;
+                            }
                         }
                     }
                 }
             });
 
-            for (let prefixo in posicoesPorPrefixo) {
-                const dados = posicoesPorPrefixo[prefixo];
-                if (dados.contador === 0) continue;
-                const centro = dados.soma.divideScalar(dados.contador);
+            // Cria exatamente 3 placas
+            for (let letra of ['A', 'B', 'C']) {
+                if (posicoesPorLetra[letra] && posicoesPorLetra[letra].contador > 0) {
+                    const dados = posicoesPorLetra[letra];
+                    const centro = dados.soma.divideScalar(dados.contador);
 
-                const div = document.createElement('div');
-                div.className = 'placa-corredor';
-                div.textContent = `Corredor ${prefixo}`;
+                    const div = document.createElement('div');
+                    div.className = 'placa-corredor';
+                    div.textContent = `Corredor ${letra}`;
 
-                const placaCSS = new THREE.CSS2DObject(div);
-                placaCSS.position.set(centro.x, dados.maxY + 1.5, centro.z);
-                scene.add(placaCSS);
-                placasGeral.push(placaCSS);
+                    const placaCSS = new THREE.CSS2DObject(div);
+                    placaCSS.position.set(centro.x, dados.maxY + 3.0, centro.z);
+                    scene.add(placaCSS);
+                    placasGeral.push(placaCSS);
+                }
             }
         }
 
-        // --- 6. EVENTOS DE INTERAÇÃO (RAYCASTER) ---
-        window.addEventListener('mousemove', (e) => {
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        // --- 6. RAYCASTER / TOOLTIP / FILTRO POR CLIQUE NO 3D ---
+        function atualizarMouse(e) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        }
 
+        window.addEventListener('mousemove', (e) => {
+            atualizarMouse(e);
             if (!modeloGeral) return;
 
             raycaster.setFromCamera(mouse, camera);
@@ -269,12 +285,12 @@
                     if (end) break;
                 }
 
-                if (end && dadosMap[end]) {
-                    const info = dadosMap[end];
+                if (end) {
+                    const info = dadosMap[end] || { produto: 'Sem dados', estoque: 0, capacidade: 0 };
                     tooltip.style.display = 'block';
                     tooltip.style.left = (e.clientX + 15) + 'px';
                     tooltip.style.top = (e.clientY + 15) + 'px';
-                    tooltip.innerHTML = `<strong>${end}</strong><br>Prod: ${info.produto}<br>Estoque: ${info.estoque}/${info.capacidade}`;
+                    tooltip.innerHTML = `<strong>Endereço: ${end}</strong><br>Produto: ${info.produto}<br>Estoque: ${info.estoque}/${info.capacidade}`;
                 } else {
                     tooltip.style.display = 'none';
                 }
@@ -287,6 +303,7 @@
             if (e.target.closest('#ui-controles') || e.target.closest('#painel-kpi')) return;
             if (!modeloGeral) return;
 
+            atualizarMouse(e);
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(modeloGeral.children, true);
 
@@ -297,18 +314,27 @@
                     if (end) break;
                 }
 
-                if (end && dadosMap[end]) {
-                    exibirKPI(end, dadosMap[end]);
+                if (end) {
+                    // Exibe KPI
+                    exibirKPI(end, dadosMap[end] || {});
+
+                    // Notifica a janela pai (Power BI) para realizar a filtragem cruzada
+                    if (window.parent) {
+                        window.parent.postMessage({
+                            tipo: 'filtro3D',
+                            endereco: end
+                        }, '*');
+                    }
                 }
             }
         });
 
         function exibirKPI(endereco, d) {
             document.getElementById('kpi-endereco').innerText = endereco;
-            document.getElementById('kpi-produto').innerText = d.produto || '-';
-            document.getElementById('kpi-estoque').innerText = d.estoque ?? '-';
-            document.getElementById('kpi-capacidade').innerText = d.capacidade ?? '-';
-            document.getElementById('kpi-status').innerText = d.status || '-';
+            document.getElementById('kpi-produto').innerText = d.produto || 'N/A';
+            document.getElementById('kpi-estoque').innerText = d.estoque ?? 0;
+            document.getElementById('kpi-capacidade').innerText = d.capacidade ?? 0;
+            document.getElementById('kpi-status').innerText = d.status || 'OK';
 
             const cap = Number(d.capacidade) || 0;
             const est = Number(d.estoque) || 0;
@@ -326,7 +352,7 @@
             painelKPI.style.display = 'none';
         });
 
-        // --- 7. BOTOES E CONTROLES ---
+        // --- 7. BOTÕES E VISÃO ---
         document.getElementById('btn-status').addEventListener('click', function() {
             modoStatusAtivo = !modoStatusAtivo;
             this.innerText = modoStatusAtivo ? 'Modo: Status (Ligado)' : 'Modo: Status (Desligado)';
@@ -355,7 +381,7 @@
             controls.update();
         });
 
-        // Controles WASD / 1ª Pessoa
+        // WASD
         const btnWASD = document.getElementById('btn-wasd');
         btnWASD.addEventListener('click', () => {
             modoWASD = !modoWASD;
@@ -407,7 +433,7 @@
             }
         }
 
-        // --- 8. LOOP DE ANIMAÇÃO E REDIMENSIONAMENTO ---
+        // --- 8. LOOP DE ANIMAÇÃO ---
         function animate() {
             requestAnimationFrame(animate);
             moverWASD();
