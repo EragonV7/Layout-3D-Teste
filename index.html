@@ -603,6 +603,7 @@
         // ou muito longe/no lado errado do corredor real do seu armazém.
         const MARGEM_LATERAL_CORREDOR = 1.8; // distância da linha central do corredor até o corpo da empilhadeira
         const LADO_CORREDOR = 1;             // 1 ou -1: lado do corredor por onde ela circula
+        const VELOCIDADE_EMP = 0.03;         // unidades do mundo 3D por frame (aumente pra ela andar mais rápido)
 
         let empilhadeiraGrupo = null;
         let empGiroflex = null;
@@ -722,7 +723,7 @@
             empCarroMovel.position.set(0, 0, 0);
             empilhadeiraGrupo.add(empCarroMovel);
 
-            empilhadeiraGrupo.visible = false;
+            empilhadeiraGrupo.visible = true;
             scene.add(empilhadeiraGrupo);
 
             chaoYReal = boxGeral ? boxGeral.min.y : 0;
@@ -813,7 +814,8 @@
             return {
                 posAlvo: new THREE.Vector3(alvoX, chaoYReal + 0.05, alvoZ),
                 pontoFrente: new THREE.Vector3(centro.x, chaoYReal + 0.05, centro.z),
-                alturaGarfo: Math.max(0, (boxEndereco.min.y - chaoYReal))
+                alturaGarfo: Math.max(0, (boxEndereco.min.y - chaoYReal)),
+                eixoDominante: info ? info.eixoDominante : null
             };
         }
 
@@ -871,18 +873,87 @@
             chaveFilaAtual = "";
             estadoEmp = 'PARADA';
             if (empilhadeiraGrupo) {
-                empilhadeiraGrupo.visible = false;
+                // Fica VISÍVEL, estacionada no canto (não some mais)
+                empilhadeiraGrupo.visible = true;
+                empilhadeiraGrupo.rotation.y = 0;
                 if (pontoEstacionamento) empilhadeiraGrupo.position.copy(pontoEstacionamento);
             }
+            alturaAtualGarfoEmp = 0;
+            if (empCarroMovel) empCarroMovel.position.y = 0;
+            if (empTorreEstagio1) empTorreEstagio1.position.y = 0.95;
+            if (empTorreEstagio2) empTorreEstagio2.position.y = 0.9;
+            if (empGiroflex) empGiroflex.material.color.setHex(0x7a1f1f); // giroflex "desligado"
+        }
+
+        // Monta uma rota "em L": primeiro sai pelo corredor principal (fora de todas as
+        // prateleiras) e só depois vira pra entrar no corredor específico do endereço alvo.
+        // Isso evita que ela atravesse a prateleira andando na diagonal.
+        function construirPontosRota(origem, alvoInfo) {
+            const y = origem.y;
+            let pontos;
+
+            if (alvoInfo.eixoDominante === 'x' && pontoEstacionamento) {
+                // Corredores correm no eixo X (lado a lado no Z) -> corredor principal fica no X do canto
+                const laneX = pontoEstacionamento.x;
+                pontos = [
+                    origem.clone(),
+                    new THREE.Vector3(laneX, y, origem.z),
+                    new THREE.Vector3(laneX, y, alvoInfo.posAlvo.z),
+                    alvoInfo.posAlvo.clone()
+                ];
+            } else if (alvoInfo.eixoDominante === 'z' && pontoEstacionamento) {
+                // Corredores correm no eixo Z (lado a lado no X) -> corredor principal fica no Z do canto
+                const laneZ = pontoEstacionamento.z;
+                pontos = [
+                    origem.clone(),
+                    new THREE.Vector3(origem.x, y, laneZ),
+                    new THREE.Vector3(alvoInfo.posAlvo.x, y, laneZ),
+                    alvoInfo.posAlvo.clone()
+                ];
+            } else {
+                pontos = [origem.clone(), alvoInfo.posAlvo.clone()];
+            }
+
+            // Remove pontos praticamente duplicados (evita segmento de comprimento zero)
+            const limpos = [pontos[0]];
+            for (let i = 1; i < pontos.length; i++) {
+                if (pontos[i].distanceTo(limpos[limpos.length - 1]) > 0.05) limpos.push(pontos[i]);
+            }
+            if (limpos.length < 2) limpos.push(alvoInfo.posAlvo.clone());
+            return limpos;
+        }
+
+        function calcularDistanciasAcumuladas(pontos) {
+            const distancias = [0];
+            for (let i = 1; i < pontos.length; i++) {
+                distancias.push(distancias[i - 1] + pontos[i].distanceTo(pontos[i - 1]));
+            }
+            return distancias;
+        }
+
+        // Dado 0<=t<=1, devolve o ponto correspondente ao longo da rota (percorrendo os
+        // segmentos em linha reta, sem "cortar caminho" entre eles)
+        function pontoNaRota(rota, t) {
+            const distanciaTotal = rota.distancias[rota.distancias.length - 1];
+            const alvoDist = Math.min(Math.max(t, 0), 1) * distanciaTotal;
+            for (let i = 1; i < rota.pontos.length; i++) {
+                if (alvoDist <= rota.distancias[i] || i === rota.pontos.length - 1) {
+                    const segLen = rota.distancias[i] - rota.distancias[i - 1];
+                    const segT = segLen > 0 ? (alvoDist - rota.distancias[i - 1]) / segLen : 0;
+                    return new THREE.Vector3().lerpVectors(rota.pontos[i - 1], rota.pontos[i], Math.min(Math.max(segT, 0), 1));
+                }
+            }
+            return rota.pontos[rota.pontos.length - 1].clone();
         }
 
         function montarRotaEmp() {
             if (!empilhadeiraGrupo || filaEnderecosEmp.length === 0) return;
             const origem = empilhadeiraGrupo.position.clone();
             origem.y = chaoYReal + 0.05;
-            const destino = filaEnderecosEmp[indiceAlvoEmp].posAlvo;
-            rotaEmpAtiva = new THREE.CatmullRomCurve3([origem, destino]);
-            alturaAlvoGarfoEmp = filaEnderecosEmp[indiceAlvoEmp].alturaGarfo;
+            const alvoInfo = filaEnderecosEmp[indiceAlvoEmp];
+            const pontos = construirPontosRota(origem, alvoInfo);
+            rotaEmpAtiva = { pontos, distancias: calcularDistanciasAcumuladas(pontos) };
+            alturaAlvoGarfoEmp = alvoInfo.alturaGarfo;
             progressoEmp = 0;
         }
 
@@ -891,7 +962,9 @@
             const alvo = filaEnderecosEmp[indiceAlvoEmp];
 
             if (estadoEmp === 'ANDANDO') {
-                progressoEmp += 0.006;
+                const distanciaTotal = rotaEmpAtiva ? rotaEmpAtiva.distancias[rotaEmpAtiva.distancias.length - 1] : 0;
+                const incremento = distanciaTotal > 0 ? (VELOCIDADE_EMP / distanciaTotal) : 1;
+                progressoEmp += incremento;
                 if (progressoEmp >= 1) {
                     progressoEmp = 1;
                     empilhadeiraGrupo.position.copy(alvo.posAlvo);
@@ -899,10 +972,10 @@
                     const dir = new THREE.Vector3().subVectors(alvo.pontoFrente, empilhadeiraGrupo.position);
                     anguloAlvoYEmp = Math.atan2(dir.x, dir.z);
                 } else {
-                    const p = rotaEmpAtiva.getPointAt(progressoEmp);
-                    const prox = rotaEmpAtiva.getPointAt(Math.min(progressoEmp + 0.01, 1));
+                    const p = pontoNaRota(rotaEmpAtiva, progressoEmp);
+                    const prox = pontoNaRota(rotaEmpAtiva, Math.min(progressoEmp + 0.01, 1));
                     empilhadeiraGrupo.position.copy(p);
-                    empilhadeiraGrupo.lookAt(prox);
+                    if (prox.distanceTo(p) > 0.001) empilhadeiraGrupo.lookAt(prox);
                     anguloAtualYEmp = empilhadeiraGrupo.rotation.y;
                 }
             }
