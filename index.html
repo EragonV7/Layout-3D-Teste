@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <title>Layout 3D - Power BI</title>
@@ -11,7 +11,7 @@
         #ui-controles { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; }
         .btn { background: #252423; color: #fff; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 13px; transition: background 0.3s; }
         .btn:hover { background: #0078D4; }
-        .btn-toggle-ativo { background: #107c41; } 
+        .btn-toggle-ativo { background: #107c41 !important; } 
         .btn-status { background: #8e44ad; } 
 
         /* Placas de Corredor (CSS2D) */
@@ -68,29 +68,29 @@
     <div id="canvas-container"></div>
 
     <script>
-        // --- 1. COMUNICAÇÃO COM O POWER BI ---
+        // --- 1. ESTADO E COMUNICAÇÃO COM O POWER BI ---
         let dadosMap = {};
         let arrSelecionados = [];
         let modoStatusAtivo = false;
 
         window.addEventListener('message', function(event) {
             if (event.data && event.data.tipo === 'dadosPowerBI') {
-                // Atualiza os dados
                 dadosMap = {};
-                event.data.dadosEstoque.forEach(d => { dadosMap[d.endereco] = d; });
+                if (Array.isArray(event.data.dadosEstoque)) {
+                    event.data.dadosEstoque.forEach(d => { dadosMap[d.endereco] = d; });
+                }
                 
-                // Atualiza a seleção (Filtros do Power BI)
                 if (event.data.selecionados && event.data.selecionados.trim() !== "") {
                     arrSelecionados = event.data.selecionados.split(',');
                 } else {
-                    arrSelecionados = []; // Nada selecionado = Mostra tudo
+                    arrSelecionados = [];
                 }
                 
                 aplicarFiltrosECores();
             }
         });
 
-        // --- 2. CONFIGURAÇÃO BÁSICA DO THREE.JS ---
+        // --- 2. CONFIGURAÇÃO DO THREE.JS ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xf4f4f4);
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
@@ -99,12 +99,11 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
         
-        // Renderizador de Placas HTML 2D (CSS2D)
         const labelRenderer = new THREE.CSS2DRenderer();
         labelRenderer.setSize(window.innerWidth, window.innerHeight);
         labelRenderer.domElement.style.position = 'absolute';
         labelRenderer.domElement.style.top = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none'; // Crucial: Permite que o mouse passe pelas placas
+        labelRenderer.domElement.style.pointerEvents = 'none';
         document.body.appendChild(labelRenderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -120,8 +119,19 @@
         let boxGeral = null;
         let centroGeral = new THREE.Vector3();
         let tamanhoMax = 0;
+        let placasGeral = [];
 
-        // --- 3. CARREGANDO O MODELO ---
+        // Raycaster e Interação
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+        const painelKPI = document.getElementById('painel-kpi');
+
+        // Movimentação WASD
+        let modoWASD = false;
+        const teclas = { w: false, a: false, s: false, d: false };
+
+        // --- 3. CARREGANDO O MODELO GLTF ---
         const gltfUrl = 'https://raw.githubusercontent.com/EragonV7/Layout-3D-Teste/main/LAYOUT%20ESTOQUE%203D.glb';
         const loader = new THREE.GLTFLoader();
         
@@ -137,12 +147,11 @@
             controls.target.copy(centroGeral);
             camera.position.set(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
             
-            // Separa os materiais e salva a cor original para evitar bugs
             modeloGeral.traverse(child => {
                 if (child.isMesh) {
-                    child.material = child.material.clone(); // Torna único
-                    child.userData.corOriginal = child.material.color.getHex(); // Salva a cor nativa do GLB
-                    child.material.transparent = true; // Permite ficar invisível com o filtro
+                    child.material = child.material.clone();
+                    child.userData.corOriginal = child.material.color.getHex();
+                    child.material.transparent = true;
                 }
             });
 
@@ -150,7 +159,7 @@
             aplicarFiltrosECores();
         });
 
-        // --- 4. FUNÇÕES DE STATUS E FILTROS ---
+        // --- 4. FUNÇÕES DE SUPORTE E FILTROS ---
         function corPorStatus(status) {
             const s = (status || '').toUpperCase();
             if (s === 'CRITICO' || s === 'CRÍTICO') return 0xe74c3c;
@@ -180,28 +189,144 @@
                 if (!child.isMesh) return;
                 
                 const end = getEnderecoDaHierarquia(child);
-                if (!end) return; // Se não for prateleira, ignora
+                if (!end) return;
 
-                // 1. Lógica do Filtro (Clicar no Power BI)
                 if (arrSelecionados.length > 0 && !arrSelecionados.includes(end)) {
-                    child.material.opacity = 0.1; // Fica quase transparente se não estiver selecionado
+                    child.material.opacity = 0.1;
                 } else {
                     child.material.opacity = 1.0;
                 }
 
-                // 2. Lógica de Cores (Botão de Calor)
                 if (modoStatusAtivo && dadosMap[end]) {
                     const corHex = corPorStatus(dadosMap[end].status);
                     child.material.color.setHex(corHex);
                 } else {
                     if (child.userData.corOriginal !== undefined) {
-                        child.material.color.setHex(child.userData.corOriginal); // Restaura cor padrão
+                        child.material.color.setHex(child.userData.corOriginal);
                     }
                 }
             });
         }
 
-        // Botão de Calor (Status)
+        // --- 5. PLACAS DOS CORREDORES ---
+        function criarPlacasCorredor() {
+            placasGeral.forEach(p => scene.remove(p));
+            placasGeral = [];
+
+            const posicoesPorPrefixo = {};
+
+            modeloGeral.traverse(child => {
+                if (child.isMesh) {
+                    const end = getEnderecoDaHierarquia(child);
+                    if (end) {
+                        const prefixo = end.split('-')[0];
+                        if (!posicoesPorPrefixo[prefixo]) {
+                            posicoesPorPrefixo[prefixo] = { soma: new THREE.Vector3(), contador: 0, maxY: -Infinity };
+                        }
+                        const pos = new THREE.Vector3();
+                        child.getWorldPosition(pos);
+                        posicoesPorPrefixo[prefixo].soma.add(pos);
+                        posicoesPorPrefixo[prefixo].contador++;
+
+                        const box = new THREE.Box3().setFromObject(child);
+                        if (box.max.y > posicoesPorPrefixo[prefixo].maxY) {
+                            posicoesPorPrefixo[prefixo].maxY = box.max.y;
+                        }
+                    }
+                }
+            });
+
+            for (let prefixo in posicoesPorPrefixo) {
+                const dados = posicoesPorPrefixo[prefixo];
+                if (dados.contador === 0) continue;
+                const centro = dados.soma.divideScalar(dados.contador);
+
+                const div = document.createElement('div');
+                div.className = 'placa-corredor';
+                div.textContent = `Corredor ${prefixo}`;
+
+                const placaCSS = new THREE.CSS2DObject(div);
+                placaCSS.position.set(centro.x, dados.maxY + 1.5, centro.z);
+                scene.add(placaCSS);
+                placasGeral.push(placaCSS);
+            }
+        }
+
+        // --- 6. EVENTOS DE INTERAÇÃO (RAYCASTER) ---
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            if (!modeloGeral) return;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(modeloGeral.children, true);
+
+            if (intersects.length > 0) {
+                let end = null;
+                for (let i = 0; i < intersects.length; i++) {
+                    end = getEnderecoDaHierarquia(intersects[i].object);
+                    if (end) break;
+                }
+
+                if (end && dadosMap[end]) {
+                    const info = dadosMap[end];
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX + 15) + 'px';
+                    tooltip.style.top = (e.clientY + 15) + 'px';
+                    tooltip.innerHTML = `<strong>${end}</strong><br>Prod: ${info.produto}<br>Estoque: ${info.estoque}/${info.capacidade}`;
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target.closest('#ui-controles') || e.target.closest('#painel-kpi')) return;
+            if (!modeloGeral) return;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(modeloGeral.children, true);
+
+            if (intersects.length > 0) {
+                let end = null;
+                for (let i = 0; i < intersects.length; i++) {
+                    end = getEnderecoDaHierarquia(intersects[i].object);
+                    if (end) break;
+                }
+
+                if (end && dadosMap[end]) {
+                    exibirKPI(end, dadosMap[end]);
+                }
+            }
+        });
+
+        function exibirKPI(endereco, d) {
+            document.getElementById('kpi-endereco').innerText = endereco;
+            document.getElementById('kpi-produto').innerText = d.produto || '-';
+            document.getElementById('kpi-estoque').innerText = d.estoque ?? '-';
+            document.getElementById('kpi-capacidade').innerText = d.capacidade ?? '-';
+            document.getElementById('kpi-status').innerText = d.status || '-';
+
+            const cap = Number(d.capacidade) || 0;
+            const est = Number(d.estoque) || 0;
+            const pct = cap > 0 ? Math.round((est / cap) * 100) : 0;
+
+            document.getElementById('kpi-pct').innerText = pct + '%';
+            const barra = document.getElementById('kpi-barra');
+            barra.style.width = Math.min(pct, 100) + '%';
+            barra.style.background = pct > 90 ? '#e74c3c' : (pct > 50 ? '#f1c40f' : '#2ecc71');
+
+            painelKPI.style.display = 'block';
+        }
+
+        document.getElementById('kpi-fechar').addEventListener('click', () => {
+            painelKPI.style.display = 'none';
+        });
+
+        // --- 7. BOTOES E CONTROLES ---
         document.getElementById('btn-status').addEventListener('click', function() {
             modoStatusAtivo = !modoStatusAtivo;
             this.innerText = modoStatusAtivo ? 'Modo: Status (Ligado)' : 'Modo: Status (Desligado)';
@@ -209,70 +334,95 @@
             aplicarFiltrosECores();
         });
 
-        // --- 5. CRIANDO AS PLACAS EM CIMA DOS CORREDORES ---
-        function criarPlacasCorredor() {
-            const posicoesPorPrefixo = {};
+        document.getElementById('btn-frente').addEventListener('click', () => {
+            if(!centroGeral) return;
+            camera.position.set(centroGeral.x, centroGeral.y + (tamanhoMax * 0.2), centroGeral.z + (tamanhoMax * 1.2));
+            controls.target.copy(centroGeral);
+            controls.update();
+        });
 
-            modeloGeral.traverse(child => {
-                if (child.isMesh) {
-                    const end = getEnderecoDaHierarquia(child);
-                    if (end) {
-                        const prefixo = end.split('-')[0]; // Ex: "A01"
-                        if (!posicoesPorPrefixo[prefixo]) {
-                            posicoesPorPrefixo[prefixo] = { soma: new THREE.Vector3(), contador: 0, maxY: 0 };
-                        }
-                        const pos = new THREE.Vector3();
-                        child.getWorldPosition(pos);
-                        posicoesPorPrefixo[prefixo].soma.add(pos);
-                        posicoesPorPrefixo[prefixo].contador++;
-                        if (pos.y > posicoesPorPrefixo[prefixo].maxY) {
-                            posicoesPorPrefixo[prefixo].maxY = pos.y;
-                        }
-                    }
-                }
-            });
+        document.getElementById('btn-topo').addEventListener('click', () => {
+            if(!centroGeral) return;
+            camera.position.set(centroGeral.x, centroGeral.y + (tamanhoMax * 1.5), centroGeral.z + 0.1);
+            controls.target.copy(centroGeral);
+            controls.update();
+        });
 
-            // Adiciona fisicamente a placa de texto no 3D
-            for (let prefixo in posicoesPorPrefixo) {
-                const dados = posicoesPorPrefixo[prefixo];
-                const centro = dados.soma.divideScalar(dados.contador);
-                
-O seu projeto de integrar um layout 3D no Power BI é muito interessante (a interface mostrada na `image_a8a861.jpg` está ficando com uma cara ótima!), mas entendo perfeitamente a frustração quando a interatividade falha. 
+        document.getElementById('btn-lado').addEventListener('click', () => {
+            if(!centroGeral) return;
+            camera.position.set(centroGeral.x + (tamanhoMax * 1.2), centroGeral.y + (tamanhoMax * 0.2), centroGeral.z);
+            controls.target.copy(centroGeral);
+            controls.update();
+        });
 
-Para resolvermos isso, precisamos esclarecer um ponto fundamental sobre como essa arquitetura funciona: **A medida DAX que você enviou é apenas o "mensageiro"**. Ela empacota os dados do Power BI e os joga por cima do muro para o seu site (`https://eragonv7.github.io/Layout-3D-Teste/`). 
+        // Controles WASD / 1ª Pessoa
+        const btnWASD = document.getElementById('btn-wasd');
+        btnWASD.addEventListener('click', () => {
+            modoWASD = !modoWASD;
+            if(modoWASD) {
+                btnWASD.classList.add('btn-toggle-ativo');
+                btnWASD.innerText = 'Visão: 1ª Pessoa (ON)';
+                const chaoY = boxGeral ? boxGeral.min.y : 0;
+                camera.position.set(centroGeral.x, chaoY + 1.8, centroGeral.z + (tamanhoMax * 0.3));
+                controls.target.set(centroGeral.x, chaoY + 1.8, centroGeral.z);
+            } else {
+                btnWASD.classList.remove('btn-toggle-ativo');
+                btnWASD.innerText = 'Visão: 1ª Pessoa';
+                camera.position.set(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
+                controls.target.copy(centroGeral);
+            }
+            controls.update();
+        });
 
-**Todos os problemas que você relatou estão ocorrendo do outro lado do muro, ou seja, no código JavaScript/HTML que está hospedado no seu GitHub.** O Power BI não consegue controlar a física, os cliques ou as cores do 3D nativamente; o código do seu site é que precisa escutar o Power BI e reagir.
+        window.addEventListener('keydown', (e) => {
+            if(!modoWASD) return;
+            const k = e.key.toLowerCase();
+            if (teclas.hasOwnProperty(k)) teclas[k] = true;
+        });
 
-Aqui está o detalhamento de cada problema e o que você precisa alterar **no código-fonte do seu projeto 3D no GitHub** para consertá-los:
+        window.addEventListener('keyup', (e) => {
+            if(!modoWASD) return;
+            const k = e.key.toLowerCase();
+            if (teclas.hasOwnProperty(k)) teclas[k] = false;
+        });
 
-### 1. O filtro do Power BI não realça a cor no 3D
-Sua medida DAX envia os dados corretamente a cada 1 segundo usando `postMessage` (na variável `selBI`). No entanto, o seu site no GitHub precisa ter um código JavaScript preparado para **receber e processar** essa mensagem.
-*   **O que buscar no seu código JS:** Você precisa de um "Event Listener" que escute a mensagem, compare a string recebida (`selecionados`) com os nomes dos seus objetos 3D (as prateleiras) e altere a cor do material (Material Color) delas.
-*   **Exemplo lógico em JS:** `window.addEventListener('message', function(event) { ... mudar cor das prateleiras ... });`
+        function moverWASD() {
+            if(!modoWASD) return;
+            const vel = 0.4;
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            dir.y = 0;
+            dir.normalize();
 
-### 2. Tooltip (Hover/Click) no 3D não funciona
-O Power BI não entende onde o seu mouse está dentro do Iframe. Em bibliotecas 3D (como Three.js ou Babylon.js), cliques e hovers são calculados usando uma técnica chamada **Raycasting** (lançar um raio invisível da câmera até o mouse para ver em qual objeto ele bate).
-*   **O que falta no seu código JS:** Você precisa implementar um *Raycaster*. Quando o raio atingir uma caixa (produto), o JavaScript deve pegar os dados daquele produto (que você enviou via `dadosEstoque`) e exibir uma `<div>` HTML flutuante na tela imitando um tooltip.
+            const side = new THREE.Vector3().crossVectors(camera.up, dir).normalize();
 
-### 3. Botão de Calor ("Modo: Status") não funciona
-Se você clica no botão roxo mostrado na `image_a8a861.jpg` e nada acontece, o problema é puramente de interface de usuário (UI) no seu site web.
-*   **Como resolver:** Verifique se no HTML do seu site o botão possui um evento `onclick`. Esse evento deve chamar uma função JavaScript que percorre todas as caixas/prateleiras e muda a cor delas com base na propriedade `capacidade` ou `estoque` que você já está enviando no JSON.
+            if(teclas.w) { camera.position.addScaledVector(dir, vel); controls.target.addScaledVector(dir, vel); }
+            if(teclas.s) { camera.position.addScaledVector(dir, -vel); controls.target.addScaledVector(dir, -vel); }
+            if(teclas.a) { camera.position.addScaledVector(side, vel); controls.target.addScaledVector(side, vel); }
+            if(teclas.d) { camera.position.addScaledVector(side, -vel); controls.target.addScaledVector(side, -vel); }
 
-### 4. WASD caindo embaixo do chão (Modo 1ª Pessoa)
-Isso é um problema clássico de física de câmeras em ambientes 3D. O botão da `image_a8a861.jpg` muda a visão, mas não há um bloqueio físico (colisão) configurado.
-*   **Como resolver:** No código do seu cenário 3D, você precisa habilitar a colisão (Collision Detection) para a sua câmera e definir que o plano do chão (Floor) é um objeto sólido que a câmera não pode atravessar. A gravidade está puxando sua câmera para baixo, mas o chão não está "segurando" ela.
+            const chaoY = boxGeral ? boxGeral.min.y : 0;
+            if (camera.position.y < chaoY + 1.8) {
+                camera.position.y = chaoY + 1.8;
+            }
+        }
 
-### 5. Placas em cima dos corredores não aparecem
-Se as placas existiam no seu modelo 3D original (feito no Blender, SketchUp, etc.), mas não aparecem no Power BI, é um problema de exportação ou carregamento.
-*   **Como resolver:** Verifique se o arquivo `.gltf`, `.glb` ou `.obj` que você está carregando no seu repositório do GitHub contém as placas. Muitas vezes, objetos sem material atribuído ou com normais invertidas ficam invisíveis ao serem exportados para a web.
+        // --- 8. LOOP DE ANIMAÇÃO E REDIMENSIONAMENTO ---
+        function animate() {
+            requestAnimationFrame(animate);
+            moverWASD();
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+        animate();
 
----
-
-### Como debugar e resolver isso mais rápido
-
-Para consertar isso, você precisa parar de olhar para o DAX por um momento e olhar para o que está acontecendo no navegador.
-1. Abra o seu relatório no Power BI Service (na web, não no Desktop).
-2. Aperte **F12** no teclado para abrir as Ferramentas de Desenvolvedor do navegador.
-3. Vá na aba **Console**. Lá você provavelmente verá erros em vermelho acusando por que os botões não estão funcionando ou se o `postMessage` está sendo rejeitado por problemas de CORS/segurança.
-
-Você está usando **Three.js** ou **Babylon.js** para renderizar esse modelo 3D no seu repositório do GitHub? Se você me disser a tecnologia, posso te dar os fragmentos de código exatos para colocar no seu site!
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
