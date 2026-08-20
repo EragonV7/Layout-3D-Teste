@@ -8,7 +8,7 @@
         body { margin: 0; overflow: hidden; background: #f4f4f4; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1; }
         
-        /* Painel de Controles (Câmeras e Status) */
+        /* Painel de Controles (Câmeras e Status) - Mantido na Esquerda */
         #ui-controles { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; max-width: 420px; }
         .btn { background: #252423; color: #fff; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 13px; transition: background 0.3s, transform 0.1s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         .btn:hover { background: #0078D4; transform: translateY(-1px); }
@@ -16,24 +16,24 @@
         .btn-toggle-ativo { background: #107c41 !important; } 
         .btn-status { background: #8e44ad; } 
 
-        /* HUD Global (Topo Centro) */
-        #hud-topo { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: #252423; display: flex; gap: 25px; padding: 12px 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 20; border-bottom: 4px solid #0078D4; }
+        /* HUD Global - Movido para a DIREITA para não encavalar nos botões */
+        #hud-topo { position: absolute; top: 15px; right: 15px; background: #252423; display: flex; gap: 25px; padding: 12px 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 20; border-bottom: 4px solid #0078D4; }
         .hud-box { text-align: center; color: #fff; min-width: 80px; }
         .hud-box .titulo { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; font-weight: bold; }
         .hud-box .valor { font-size: 20px; font-weight: bold; }
 
-        /* Placas de Corredor (CSS2D) - Apenas 3 Placas */
+        /* Placas de Corredor (CSS2D) */
         .placa-corredor { background: rgba(0, 0, 0, 0.85); color: #ffffff; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 16px; border: 2px solid #0078D4; pointer-events: none; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
 
-        /* Tooltip Flutuante (Estilo Claro como na imagem) */
+        /* Tooltip Flutuante */
         #tooltip { position: absolute; background: #ffffff; color: #333; padding: 12px 16px; border-radius: 6px; display: none; pointer-events: none; z-index: 9999; font-size: 13px; box-shadow: 0 4px 15px rgba(0,0,0,0.25); border-top: 4px solid #0078D4; min-width: 170px; }
         .tt-header { font-weight: bold; font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 6px; color: #0078D4; }
         .tt-line { display: flex; justify-content: space-between; margin-bottom: 6px; }
         .tt-label { color: #666; }
         .tt-value { font-weight: bold; color: #111; text-align: right; margin-left: 20px; }
 
-        /* Painel Lateral KPI (Ao clicar na prateleira) */
-        #painel-kpi { position: absolute; top: 15px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.3); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
+        /* Painel Lateral KPI - Movido mais para baixo (top: 95px) para ficar abaixo do HUD */
+        #painel-kpi { position: absolute; top: 95px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.3); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
         #painel-kpi .cabecalho { background: #f8f9fa; color: #333; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid #eee; }
         #painel-kpi .fechar { cursor: pointer; font-size: 20px; color: #999; line-height: 1; }
         #painel-kpi .fechar:hover { color: #e74c3c; }
@@ -76,7 +76,6 @@
             <span class="titulo">Ocupação</span>
             <span class="valor" id="hud-pct">0%</span>
         </div>
-        <!-- Contador de Registros Lidos para facilitar seu diagnóstico -->
         <div class="hud-box" style="border-left: 2px solid #555; padding-left: 20px;">
             <span class="titulo">Lidos do PBI</span>
             <span class="valor" id="hud-debug" style="color: #2ecc71;">0</span>
@@ -112,7 +111,6 @@
         let arrSelecionados = [];
         let modoStatusAtivo = false;
 
-        // Atualiza os valores do HUD do Topo
         function atualizarHUD(qtdLidos = 0) {
             let capTotal = 0, estTotal = 0;
             let objCount = 0;
@@ -125,7 +123,7 @@
             document.getElementById('hud-est').innerText = estTotal;
             const pct = capTotal > 0 ? Math.round((estTotal / capTotal) * 100) : 0;
             document.getElementById('hud-pct').innerText = pct + '%';
-            document.getElementById('hud-debug').innerText = objCount; // Atualiza a contagem visual
+            document.getElementById('hud-debug').innerText = objCount; 
         }
 
         window.addEventListener('message', function(event) {
@@ -133,7 +131,6 @@
                 
                 let payload = event.data.dadosEstoque;
                 
-                // Conversão forçada se vier como string do iframe
                 if (typeof payload === 'string') {
                     try { payload = JSON.parse(payload); } catch(e) { console.warn("Erro ao ler JSON", e); }
                 }
@@ -141,20 +138,21 @@
                 dadosMap = {};
                 let countLidos = 0;
                 
-                // LEITURA BLINDADA (Ignora maiúsculas/minúsculas e força números)
                 if (Array.isArray(payload)) {
                     payload.forEach(item => { 
-                        // Transforma todas as chaves em minúsculas para não dar erro
                         const d = {};
                         for (let k in item) { d[k.toLowerCase()] = item[k]; }
 
                         const enderecoRaw = d['endereco'] || d['endereço'] || '';
                         
                         if(enderecoRaw) {
-                            // Limpa qualquer espaço em branco acidental do DAX e joga pra maiúscula (ex: 'A01-N01')
-                            const endKey = enderecoRaw.toString().replace(/\s/g, '').toUpperCase();
+                            // AQUI ESTÁ A MÁGICA: Extrai só o "A01-N01" mesmo que o PBI mande "IfcBuildingElementProxyA01-N01"
+                            const regex = /([A-Z]\d{2}-N\d{2})/i;
+                            const match = enderecoRaw.toString().match(regex);
                             
-                            // Função que garante que estoques e capacidades virem números reais
+                            // Se encontrar o padrão A01-N01 usa ele, se não usa a string limpa
+                            const endKey = match ? match[1].toUpperCase() : enderecoRaw.toString().replace(/\s/g, '').toUpperCase();
+                            
                             const extrairNum = (v) => {
                                 if(v == null) return 0;
                                 if(typeof v === 'number') return v;
@@ -175,7 +173,12 @@
                 
                 let sel = event.data.selecionados;
                 if (sel && typeof sel === 'string' && sel.trim() !== "") {
-                    arrSelecionados = sel.split(',').map(s => s.trim().toUpperCase());
+                    // Também filtra as seleções para usar apenas a parte A01-N01
+                    arrSelecionados = sel.split(',').map(s => {
+                        const str = s.trim().toUpperCase();
+                        const match = str.match(/([A-Z]\d{2}-N\d{2})/);
+                        return match ? match[1] : str;
+                    });
                 } else {
                     arrSelecionados = [];
                 }
@@ -200,7 +203,7 @@
         labelRenderer.domElement.style.position = 'absolute';
         labelRenderer.domElement.style.top = '0px';
         labelRenderer.domElement.style.left = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none'; // Garante que o CSS2D não trava cliques do mouse
+        labelRenderer.domElement.style.pointerEvents = 'none'; 
         document.body.appendChild(labelRenderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -223,7 +226,6 @@
         const tooltip = document.getElementById('tooltip');
         const painelKPI = document.getElementById('painel-kpi');
 
-        // Movimentação WASD
         let modoWASD = false;
         const teclas = { w: false, a: false, s: false, d: false };
 
@@ -280,7 +282,7 @@
             return null; 
         }
 
-        // --- 5. APLICAR FILTROS (CORREÇÃO DO VISUAL TRANSPARENTE ZUADO) ---
+        // --- 5. APLICAR FILTROS (CORREÇÃO DO VISUAL) ---
         function aplicarFiltrosECores() {
             if(!modeloGeral) return;
             
@@ -294,7 +296,6 @@
                 const estaSelecionado = arrSelecionados.length === 0 || arrSelecionados.some(sel => sel.includes(endUpper) || endUpper.includes(sel));
 
                 if (!estaSelecionado) {
-                    // Limpeza visual: Prateleiras não selecionadas perdem o conflito de z-index
                     child.material.transparent = true;
                     child.material.opacity = 0.12;
                     child.material.depthWrite = false;
@@ -388,7 +389,7 @@
 
                 if (end) {
                     const endFormatado = end.toUpperCase();
-                    // Busca na memória baseada na chave limpa do endereço
+                    // Agora sim as chaves vão bater!
                     const info = dadosMap[endFormatado] || { produto: 'N/A', estoque: 0, capacidade: 0, status: 'Sem Info' };
                     
                     const cap = Number(info.capacidade) || 0;
@@ -400,7 +401,6 @@
                     tooltip.style.left = (e.clientX + 15) + 'px';
                     tooltip.style.top = (e.clientY + 15) + 'px';
                     
-                    // Tooltip reconstruído idêntico ao da imagem
                     tooltip.innerHTML = `
                         <div class="tt-header">${endFormatado}</div>
                         <div class="tt-line"><span class="tt-label">Produto</span><span class="tt-value">${info.produto}</span></div>
@@ -462,7 +462,7 @@
             painelKPI.style.display = 'none';
         });
 
-        // --- 8. CONTROLES DE VISÃO E MOVIMENTO (WASD & BOTÕES) ---
+        // --- 8. CONTROLES DE VISÃO E MOVIMENTO ---
         document.getElementById('btn-status').addEventListener('click', function() {
             modoStatusAtivo = !modoStatusAtivo;
             this.innerText = modoStatusAtivo ? 'Modo: Status (Ligado)' : 'Modo: Status (Desligado)';
@@ -491,7 +491,6 @@
             controls.update();
         });
 
-        // Controle WASD
         const btnWASD = document.getElementById('btn-wasd');
         btnWASD.addEventListener('click', () => {
             modoWASD = !modoWASD;
