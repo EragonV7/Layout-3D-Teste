@@ -252,6 +252,8 @@
             criar3PlacasCorredor();
             calcularInfoCorredores();
             criarEmpilhadeiraGrupo();
+            console.log('[EMP] Corredores detectados no GLB:', Object.keys(corredorInfo), corredorInfo);
+            console.log('[EMP] Empilhadeira criada. Grupo:', empilhadeiraGrupo);
             aplicarFiltrosECores();
         });
 
@@ -793,9 +795,15 @@
         // Chamada sempre que a seleção/filtro do Power BI mudar (via postMessage)
         function atualizarEmpilhadeiraSelecao() {
             const hudEmp = document.getElementById('hud-emp');
-            if (!modeloGeral || !empilhadeiraGrupo) return;
+            console.log('[EMP] atualizarEmpilhadeiraSelecao chamada. modeloGeral pronto?', !!modeloGeral, '| empilhadeiraGrupo pronto?', !!empilhadeiraGrupo, '| arrSelecionados:', arrSelecionados);
+
+            if (!modeloGeral || !empilhadeiraGrupo) {
+                console.log('[EMP] Modelo ou empilhadeira ainda não carregados, abortando esta rodada.');
+                return;
+            }
 
             if (arrSelecionados.length < 1 || arrSelecionados.length > 3) {
+                console.log('[EMP] Fora da faixa 1-3 selecionados (' + arrSelecionados.length + '), desativando.');
                 desativarEmpilhadeira();
                 if (hudEmp) hudEmp.innerText = 'Inativa';
                 return;
@@ -810,10 +818,12 @@
                 const m = sel.match(regexEnd);
                 const enderecoNormalizado = m ? m[1] : sel;
                 const pos = getPosicaoRealEndereco(enderecoNormalizado);
+                console.log('[EMP] Endereço bruto:', sel, '| normalizado:', enderecoNormalizado, '| posição encontrada?', !!pos, pos);
                 if (pos) novaFila.push({ endereco: enderecoNormalizado, ...pos });
             });
 
             if (novaFila.length === 0) {
+                console.log('[EMP] Nenhum endereço da seleção foi encontrado no modelo 3D. Desativando.');
                 desativarEmpilhadeira();
                 if (hudEmp) hudEmp.innerText = 'Inativa';
                 return;
@@ -826,6 +836,7 @@
             empilhadeiraGrupo.visible = true;
             estadoEmp = 'ANDANDO';
             montarRotaEmp();
+            console.log('[EMP] Empilhadeira ATIVADA com fila:', filaEnderecosEmp);
             if (hudEmp) hudEmp.innerText = 'Ativa (' + filaEnderecosEmp.length + ')';
         }
 
@@ -906,6 +917,15 @@
                 empGiroflex.material.color.setHex(piscaLigado ? 0xff4757 : 0xfffa65);
             }
         }
+
+        // Atalho de teste manual: abra o link do GitHub Pages direto no navegador (sem Power BI),
+        // espere o armazém 3D carregar, abra o Console (F12) e rode, por exemplo:
+        //   testarEmpilhadeira(["A01-N01"])
+        window.testarEmpilhadeira = function(lista) {
+            arrSelecionados = lista.map(s => s.toUpperCase());
+            console.log('[EMP][TESTE MANUAL] Simulando seleção:', arrSelecionados);
+            atualizarEmpilhadeiraSelecao();
+        };
 
         // --- 9. LOOP DE ANIMAÇÃO ---
         function animate() {
