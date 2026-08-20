@@ -1,271 +1,250 @@
 <!DOCTYPE html>
-<html lang='pt-BR'>
+<html>
 <head>
-    <meta charset='UTF-8'>
+    <meta charset="UTF-8">
+    <title>Layout 3D - Power BI</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #ffffff; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        #botoes-camera { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 5px; flex-wrap: wrap; max-width: 400px; }
-        .btn { background: #252423; color: #fff; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 12px; transition: background 0.3s ease; }
+        body { margin: 0; overflow: hidden; background: #f4f4f4; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1; }
+        
+        /* Interface de Botões (Topo Esquerda) */
+        #ui-controles { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; }
+        .btn { background: #252423; color: #fff; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 13px; transition: background 0.3s; }
         .btn:hover { background: #0078D4; }
-        #btn-modo { background: #8e44ad; }
-        #btn-modo:hover { background: #9b59b6; }
-        #btn-fps { background: #16a085; }
-        #btn-fps:hover { background: #1abc9c; }
-        #hud-container { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.95); padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); z-index: 40; display: flex; gap: 30px; border-top: 4px solid #0078D4; align-items: flex-start; }
-        .hud-item { text-align: center; min-width: 120px; }
-        .hud-titulo { font-size: 11px; color: #6b6b6b; text-transform: uppercase; font-weight: 700; }
-        .hud-valor { font-size: 22px; color: #252423; font-weight: 800; margin-top: 4px; }
-        .hud-progress-bg { width: 100%; height: 6px; background-color: #e0e0e0; border-radius: 4px; margin-top: 8px; overflow: hidden; }
-        .hud-progress-bar { height: 100%; width: 0%; border-radius: 4px; transition: width 1s ease; }
-        #aviso-fps { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 12px; z-index: 50; display: none; }
-        #tooltip { position: absolute; background: rgba(0, 0, 0, 0.9); color: #fff; padding: 8px 12px; border-radius: 4px; display: none; pointer-events: none; z-index: 9999; font-size: 13px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        #legenda { position: absolute; bottom: 15px; left: 15px; z-index: 10; background: rgba(255,255,255,0.92); padding: 10px 14px; border-radius: 6px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        #legenda .item { display: flex; align-items: center; margin-bottom: 4px; }
-        #legenda .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; display: inline-block; }
+        .btn-toggle-ativo { background: #107c41; } /* Verde quando ativo (Ex: 1ª pessoa) */
+        .btn-status { background: #8e44ad; } /* Roxo para o botão de Status */
+
+        /* Tooltip de Hover */
+        #tooltip { position: absolute; background: rgba(0,0,0,0.85); color: #fff; padding: 10px; border-radius: 5px; display: none; pointer-events: none; z-index: 20; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+
+        /* Painel KPI (Clique) */
+        #painel-kpi { position: absolute; top: 15px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.4); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
+        #painel-kpi .cabecalho { background: #f8f9fa; color: #333; padding: 12px 15px; display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; border-bottom: 1px solid #eee; }
+        #painel-kpi .fechar { cursor: pointer; font-size: 18px; color: #999; }
+        #painel-kpi .fechar:hover { color: #e74c3c; }
+        #painel-kpi .corpo { padding: 15px; }
+        #painel-kpi .linha { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
+        #painel-kpi .rotulo { color: #666; }
+        #painel-kpi .valor { font-weight: bold; color: #222; text-align: right; }
+        .barra-fundo { background: #e0e0e0; border-radius: 4px; height: 10px; margin-top: 5px; overflow: hidden; }
+        .barra-preenchida { height: 100%; border-radius: 4px; transition: width 0.5s ease, background-color 0.5s ease; }
     </style>
 
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-      }
-    </script>
+    <!-- Importando Three.js Clássico -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
-    <div id='botoes-camera'>
-        <button class='btn' id='btn-frente'>Frente</button>
-        <button class='btn' id='btn-topo'>Topo</button>
-        <button class='btn' id='btn-lado'>Lado</button>
-        <!-- Mantive os botões abaixo caso queira expandir depois, por enquanto focam a câmera -->
-        <button class='btn' id='btn-modo'>Modo: Status</button>
-        <button class='btn' id='btn-fps'>Visão: 1ª Pessoa</button>
-    </div>
-
-    <div id='hud-container'>
-        <div class='hud-item'>
-            <div class='hud-titulo'>Ocupação Global</div>
-            <div class='hud-valor' id='hud-ocupacao'>--%</div>
-            <div class='hud-progress-bg'><div class='hud-progress-bar' id='hud-ocupacao-bar'></div></div>
-        </div>
-        <div class='hud-item' style='display: flex; flex-direction: column; justify-content: center;'>
-            <div class='hud-titulo'>Posições Mapeadas</div>
-            <div class='hud-valor' id='hud-posicoes'>--</div>
-        </div>
-    </div>
-
-    <div id='aviso-fps'>🚶 <b>Modo Pedestre Ativo</b><br>• Use WASD/Setas para caminhar.<br>• Clique e arraste para olhar.</div>
     
-    <div id='legenda'>
-        <div id='legenda-status'>
-            <div class='item'><span class='dot' style='background:#2ecc71'></span>OK</div>
-            <div class='item'><span class='dot' style='background:#f1c40f'></span>Baixo</div>
-            <div class='item'><span class='dot' style='background:#e74c3c'></span>Crítico</div>
+    <div id="ui-controles">
+        <button class="btn" id="btn-frente">Frente</button>
+        <button class="btn" id="btn-topo">Topo</button>
+        <button class="btn" id="btn-lado">Lado</button>
+        <button class="btn btn-status" id="btn-status">Modo: Status (Desligado)</button>
+        <button class="btn" id="btn-wasd">Visão: 1ª Pessoa</button>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <div id="painel-kpi">
+        <div class="cabecalho"><span id="kpi-endereco">Endereço</span><span class="fechar" id="kpi-fechar">&times;</span></div>
+        <div class="corpo">
+            <div class="linha"><span class="rotulo">Produto</span><span class="valor" id="kpi-produto">-</span></div>
+            <div class="linha"><span class="rotulo">Estoque atual</span><span class="valor" id="kpi-estoque">-</span></div>
+            <div class="linha"><span class="rotulo">Capacidade</span><span class="valor" id="kpi-capacidade">-</span></div>
+            <div class="linha"><span class="rotulo">Status</span><span class="valor" id="kpi-status">-</span></div>
+            <div style="margin-top: 15px;">
+                <div class="linha" style="margin-bottom: 2px;"><span class="rotulo">Ocupação</span><span class="valor" id="kpi-pct">0%</span></div>
+                <div class="barra-fundo"><div class="barra-preenchida" id="kpi-barra"></div></div>
+            </div>
         </div>
     </div>
-    
-    <div id='tooltip'></div>
-    <div id='canvas-container'></div>
 
-    <script type='module'>
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    <div id="canvas-container"></div>
 
-        const container = document.getElementById('canvas-container');
+    <script>
+        // --- 1. COMUNICAÇÃO COM O POWER BI ---
+        let dadosMap = {};
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.tipo === 'dadosPowerBI') {
+                const dadosEstoque = event.data.dadosEstoque;
+                dadosMap = {};
+                dadosEstoque.forEach(d => { dadosMap[d.endereco] = d; });
+                
+                // Se o modo status já estiver ativo, repinta ao receber novos dados
+                if (modoStatusAtivo) aplicarCoresStatus();
+            }
+        });
+
+        // --- 2. CONFIGURAÇÃO BÁSICA DO THREE.JS ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf0f0f0);
-        
+        scene.background = new THREE.Color(0xe0e0e0);
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        container.appendChild(renderer.domElement);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
         
-        const controls = new OrbitControls(camera, renderer.domElement);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+        controls.dampingFactor = 0.05;
+        
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(50, 100, 50);
         scene.add(dirLight);
 
         let modeloGeral = null;
         let centroGeral = new THREE.Vector3();
         let tamanhoMax = 0;
-        let chaoY = 0;
-        let gruposGerais = {}; 
-        const objetosCriticos = [];
+        let materiaisOriginais = new Map(); // Guarda as cores originais para podermos alternar
 
-        let dadosEstoque = [];
-        let dadosMap = {};
-        let listaSelecionadosLimpos = [];
-
-        window.addEventListener('message', function(event) {
-            if (event.data && event.data.tipo === 'dadosPowerBI') {
-                dadosEstoque = event.data.dadosEstoque;
-                const textoSelecionados = event.data.selecionados || '';
-                const listaSel = textoSelecionados !== '' ? textoSelecionados.split(',').map(s => s.trim()) : [];
-                listaSelecionadosLimpos = listaSel.map(s => extrairEndereco(s) || s);
-
-                processarDados();
-                if (modeloGeral) atualizarCoresEVisibilidade();
-            }
+        // --- 3. CARREGANDO O MODELO ---
+        const gltfUrl = 'LAYOUT ESTOQUE 3D.glb'; // Caminho relativo se estiver na mesma pasta no GitHub
+        const loader = new THREE.GLTFLoader();
+        
+        loader.load(gltfUrl, function (gltf) {
+            modeloGeral = gltf.scene; 
+            scene.add(modeloGeral);
+            
+            const box = new THREE.Box3().setFromObject(modeloGeral);
+            centroGeral = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            tamanhoMax = Math.max(size.x, size.y, size.z);
+            
+            controls.target.copy(centroGeral);
+            camera.position.set(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
+            
+            // Salva as cores originais de cada peça
+            modeloGeral.traverse(child => {
+                if (child.isMesh) {
+                    if (Array.isArray(child.material)) {
+                        materiaisOriginais.set(child.uuid, child.material.map(m => m.clone()));
+                    } else {
+                        materiaisOriginais.set(child.uuid, child.material.clone());
+                    }
+                }
+            });
         });
 
-        function toNumber(val) { return parseFloat(val?.toString().replace(',', '.')) || 0; }
-        function extrairEndereco(nome) { const m = nome?.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); return m ? m[1] : null; }
-        function getEnderecoDaHierarquia(obj) { let atual = obj; while(atual) { const end = extrairEndereco(atual.name); if (end) return end; atual = atual.parent; } return null; }
-
-        function processarDados() {
-            let totalEstoque = 0; let totalCap = 0; let count = 0;
-            dadosEstoque.forEach(d => { 
-                const endLimpo = extrairEndereco(d.endereco) || d.endereco;
-                dadosMap[endLimpo] = d; 
-                totalEstoque += toNumber(d.estoque);
-                totalCap += toNumber(d.capacidade);
-                count++;
-            });
-
-            const ocupacao = totalCap > 0 ? ((totalEstoque / totalCap) * 100).toFixed(1) : 0;
-            let corHUD = ocupacao >= 80 ? '#e74c3c' : (ocupacao >= 50 ? '#f39c12' : '#2ecc71');
-
-            document.getElementById('hud-ocupacao').innerText = ocupacao + '%';
-            document.getElementById('hud-ocupacao').style.color = corHUD;
-            document.getElementById('hud-ocupacao-bar').style.width = Math.min(ocupacao, 100) + '%';
-            document.getElementById('hud-ocupacao-bar').style.backgroundColor = corHUD;
-            document.getElementById('hud-posicoes').innerText = count;
-        }
-
+        // --- 4. LÓGICA DE CORES E STATUS ---
+        let modoStatusAtivo = false;
+        
         function corPorStatus(status) {
             const s = (status || '').toUpperCase();
-            if (s === 'CRITICO' || s === 'CRÍTICO') return 0xe74c3c;
-            if (s === 'BAIXO') return 0xf1c40f;
-            return 0x2ecc71; 
+            if (s === 'CRITICO' || s === 'CRÍTICO') return 0xe74c3c; // Vermelho
+            if (s === 'BAIXO') return 0xf1c40f; // Amarelo
+            return 0x2ecc71; // Verde
         }
 
-        function applyMaterialColor(mesh, hexColor) {
-            if (!mesh.material) return;
-            mesh.material = Array.isArray(mesh.material) ? mesh.material.map(m => { const nm = m.clone(); if(nm.color) nm.color.setHex(hexColor); return nm; }) : (() => { const m = mesh.material.clone(); if(m.color) m.color.setHex(hexColor); return m; })();
+        function extrairEndereco(nome) { 
+            const m = nome?.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); 
+            return m ? m[1] : null; 
         }
 
-        function applyEmissive(mesh, hexColor, intensity) {
-            if (!mesh.material) return;
-            if (Array.isArray(mesh.material)) { mesh.material.forEach(m => { if(m.emissive) { m.emissive.setHex(hexColor); m.emissiveIntensity = intensity; }}); }
-            else { if(mesh.material.emissive) { mesh.material.emissive.setHex(hexColor); mesh.material.emissiveIntensity = intensity; } }
+        function getEnderecoDaHierarquia(obj) { 
+            let atual = obj; 
+            while(atual) { 
+                const end = extrairEndereco(atual.name); 
+                if (end) return end; 
+                atual = atual.parent; 
+            } 
+            return null; 
         }
 
-        function atualizarCoresEVisibilidade() {
-            objetosCriticos.length = 0; 
-            Object.keys(dadosMap).forEach(endLimpo => {
-                const dado = dadosMap[endLimpo];
-                const meshes = gruposGerais[endLimpo];
-                if (!meshes) return;
-
-                const cor = corPorStatus(dado.status);
-                const ehCritico = (dado.status.toUpperCase() === 'CRITICO');
-
-                meshes.forEach(m => {
-                    applyMaterialColor(m, cor);
-                    if (ehCritico) objetosCriticos.push(m);
-                    if (listaSelecionadosLimpos.includes(endLimpo)) applyEmissive(m, 0xffffff, 0.6);
-                    else applyEmissive(m, 0x000000, 0);
-                });
+        function aplicarCoresStatus() {
+            if(!modeloGeral) return;
+            modeloGeral.traverse(child => {
+                if (!child.isMesh) return;
+                const end = getEnderecoDaHierarquia(child);
+                
+                if (modoStatusAtivo && end && dadosMap[end]) {
+                    const corHex = corPorStatus(dadosMap[end].status);
+                    if (Array.isArray(child.material)) {
+                        child.material = child.material.map(m => { const nm = m.clone(); nm.color.setHex(corHex); return nm; });
+                    } else {
+                        child.material = child.material.clone();
+                        child.material.color.setHex(corHex);
+                    }
+                } else {
+                    // Restaura cor original
+                    if (materiaisOriginais.has(child.uuid)) {
+                        child.material = materiaisOriginais.get(child.uuid);
+                    }
+                }
             });
         }
 
-        const loader = new GLTFLoader();
-        loader.load(
-            'LAYOUT ESTOQUE 3D.glb', 
-            function (gltf) {
-                modeloGeral = gltf.scene;
-                scene.add(modeloGeral);
+        // Botão Modo Status
+        document.getElementById('btn-status').addEventListener('click', function() {
+            modoStatusAtivo = !modoStatusAtivo;
+            this.innerText = modoStatusAtivo ? 'Modo: Status (Ligado)' : 'Modo: Status (Desligado)';
+            this.style.background = modoStatusAtivo ? '#2ecc71' : '#8e44ad';
+            aplicarCoresStatus();
+        });
 
-                const box = new THREE.Box3().setFromObject(modeloGeral);
-                box.getCenter(centroGeral);
-                chaoY = box.min.y;
-                tamanhoMax = Math.max(...box.getSize(new THREE.Vector3()).toArray());
-
-                controls.target.copy(centroGeral);
-                camera.position.set(centroGeral.x + tamanhoMax/2, centroGeral.y + tamanhoMax/2, centroGeral.z + tamanhoMax/2);
-                camera.lookAt(centroGeral);
-
-                modeloGeral.traverse(child => {
-                    if (!child.isMesh) return;
-                    const endLimpo = getEnderecoDaHierarquia(child);
-                    if (!endLimpo) return;
-                    if (!gruposGerais[endLimpo]) gruposGerais[endLimpo] = [];
-                    gruposGerais[endLimpo].push(child);
-                });
-
-                if (Object.keys(dadosMap).length > 0) atualizarCoresEVisibilidade();
+        // --- 5. LÓGICA DE CÂMERA (BOTÕES E ANIMAÇÃO) ---
+        function voarPara(posAlvo, lookAlvo) {
+            if(modo1Pessoa) desativar1Pessoa(); // Cancela 1ª pessoa se clicar nos botões de voo
+            
+            const posInic = camera.position.clone();
+            const lookInic = controls.target.clone();
+            const inicio = performance.now();
+            controls.enabled = false;
+            
+            function passo(agora) {
+                const t = Math.min((agora - inicio) / 1000, 1);
+                const easeT = 1 - Math.pow(1 - t, 3);
+                camera.position.lerpVectors(posInic, posAlvo, easeT);
+                controls.target.lerpVectors(lookInic, lookAlvo, easeT);
+                controls.update();
+                if (t < 1) requestAnimationFrame(passo); 
+                else controls.enabled = true;
             }
-        );
+            requestAnimationFrame(passo);
+        }
 
-        let piscaLigado = false;
-        setInterval(() => {
-            piscaLigado = !piscaLigado;
-            objetosCriticos.forEach(obj => {
-                const endLimpo = getEnderecoDaHierarquia(obj);
-                if (!listaSelecionadosLimpos.includes(endLimpo)) applyEmissive(obj, piscaLigado ? 0xff0000 : 0x000000, piscaLigado ? 0.9 : 0);
-            });
-        }, 500);
+        document.getElementById('btn-frente').addEventListener('click', () => voarPara(new THREE.Vector3(centroGeral.x, centroGeral.y, centroGeral.z + (tamanhoMax*1.2)), centroGeral));
+        document.getElementById('btn-topo').addEventListener('click', () => voarPara(new THREE.Vector3(centroGeral.x, centroGeral.y + (tamanhoMax*1.2), centroGeral.z), centroGeral));
+        document.getElementById('btn-lado').addEventListener('click', () => voarPara(new THREE.Vector3(centroGeral.x + (tamanhoMax*1.2), centroGeral.y, centroGeral.z), centroGeral));
 
-        // --- CORREÇÃO 1: FUNÇÕES DOS BOTÕES DE CÂMERA ---
-        document.getElementById('btn-frente').addEventListener('click', () => {
-            if(!modeloGeral) return;
-            camera.position.set(centroGeral.x, centroGeral.y + tamanhoMax * 0.2, centroGeral.z + tamanhoMax * 0.8);
-            controls.target.copy(centroGeral);
-        });
-
-        document.getElementById('btn-topo').addEventListener('click', () => {
-            if(!modeloGeral) return;
-            camera.position.set(centroGeral.x, centroGeral.y + tamanhoMax, centroGeral.z + 0.1); // +0.1 para evitar bug de giro no eixo Y
-            controls.target.copy(centroGeral);
-        });
-
-        document.getElementById('btn-lado').addEventListener('click', () => {
-            if(!modeloGeral) return;
-            camera.position.set(centroGeral.x + tamanhoMax * 0.8, centroGeral.y + tamanhoMax * 0.2, centroGeral.z);
-            controls.target.copy(centroGeral);
-        });
-
-        // --- CORREÇÃO 2: TOOLTIP ADAPTADO PARA O IFRAME ---
+        // --- 6. INTERAÇÕES DE MOUSE (TOOLTIP E CLIQUE PARA O PAINEL KPI) ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2(-2, -2);
         const tooltip = document.getElementById('tooltip');
+        const painelKPI = document.getElementById('painel-kpi');
 
-        // Usando pointermove (melhor que mousemove para iframes/telas touch)
-        window.addEventListener('pointermove', function (event) {
-            if (!modeloGeral) return;
-            
-            // Pega as dimensões reais da tela onde o canvas está renderizado
+        document.getElementById('kpi-fechar').addEventListener('click', () => painelKPI.style.display = 'none');
+
+        function pegarEnderecoSobMouse(event) {
+            if (!modeloGeral) return null;
             const rect = renderer.domElement.getBoundingClientRect();
-            
-            // Calcula a posição do mouse de forma relativa ao iframe, não à janela inteira
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-            
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(modeloGeral, true);
-            
-            let endEncontrado = null;
             for (let i = 0; i < intersects.length; i++) {
                 if (intersects[i].object.visible) {
-                    endEncontrado = getEnderecoDaHierarquia(intersects[i].object);
-                    if (endEncontrado) break;
+                    const end = getEnderecoDaHierarquia(intersects[i].object);
+                    if (end) return end;
                 }
             }
+            return null;
+        }
 
-            if (endEncontrado && dadosMap[endEncontrado]) {
-                const dado = dadosMap[endEncontrado];
+        // Hover (Tooltip)
+        window.addEventListener('pointermove', function (event) {
+            if(modo1Pessoa) return; // Esconde tooltip se tiver andando
+            const end = pegarEnderecoSobMouse(event);
+            if (end && dadosMap[end]) {
+                const dado = dadosMap[end];
+                const ocupacao = dado.capacidade > 0 ? Math.round((dado.estoque / dado.capacidade) * 100) : 0;
+                
                 tooltip.style.display = 'block';
                 tooltip.style.left = (event.clientX + 15) + 'px';
                 tooltip.style.top = (event.clientY + 15) + 'px';
-                const pct = dado.capacidade > 0 ? ((dado.estoque / dado.capacidade) * 100).toFixed(0) : 0;
-                tooltip.innerHTML = `<b>${dado.endereco}</b><br>Produto: ${dado.produto}<br>Ocupação: ${pct}%`;
+                tooltip.innerHTML = `<b>${end}</b><br>Produto: ${dado.produto}<br>Ocupação: ${ocupacao}%`;
                 document.body.style.cursor = 'pointer';
             } else {
                 tooltip.style.display = 'none';
@@ -273,15 +252,83 @@
             }
         });
 
-        // Garantir que a tela se redimensione caso o visual do Power BI mude de tamanho
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        // Clique (Abrir KPI)
+        window.addEventListener('click', function (event) {
+            if (event.target.tagName === 'BUTTON' || event.target.className === 'fechar') return;
+            const end = pegarEnderecoSobMouse(event);
+            if (end && dadosMap[end]) {
+                const dado = dadosMap[end];
+                const pct = dado.capacidade > 0 ? (dado.estoque / dado.capacidade) * 100 : 0;
+                
+                document.getElementById('kpi-endereco').innerText = end;
+                document.getElementById('kpi-produto').innerText = dado.produto || 'N/A';
+                document.getElementById('kpi-estoque').innerText = dado.estoque;
+                document.getElementById('kpi-capacidade').innerText = dado.capacidade;
+                document.getElementById('kpi-status').innerText = dado.status || 'OK';
+                document.getElementById('kpi-pct').innerText = pct.toFixed(1) + '%';
+                
+                const barra = document.getElementById('kpi-barra');
+                barra.style.width = Math.min(pct, 100) + '%';
+                barra.style.backgroundColor = '#' + corPorStatus(dado.status).toString(16).padStart(6, '0');
+                
+                painelKPI.style.display = 'block';
+            }
+        });
+
+        // --- 7. MODO 1ª PESSOA (WASD) ---
+        let modo1Pessoa = false;
+        const btnWASD = document.getElementById('btn-wasd');
+        const teclas = { w: false, a: false, s: false, d: false };
+        const velocidade = 2.0;
+
+        function desativar1Pessoa() {
+            modo1Pessoa = false;
+            btnWASD.classList.remove('btn-toggle-ativo');
+            controls.enablePan = true;
+            controls.enableZoom = true;
+            controls.target.copy(centroGeral);
         }
 
-        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        btnWASD.addEventListener('click', function() {
+            modo1Pessoa = !modo1Pessoa;
+            if (modo1Pessoa) {
+                this.classList.add('btn-toggle-ativo');
+                // Desce a câmera para o nível do chão
+                camera.position.set(centroGeral.x, centroGeral.y - (tamanhoMax * 0.3), centroGeral.z + (tamanhoMax * 0.5));
+                controls.target.set(camera.position.x, camera.position.y, camera.position.z - 1);
+                controls.enablePan = false; 
+                controls.enableZoom = false; // Em 1ª pessoa usamos o scroll, o WASD faz o movimento
+            } else {
+                desativar1Pessoa();
+            }
+        });
+
+        window.addEventListener('keydown', (e) => { if (modo1Pessoa && teclas.hasOwnProperty(e.key.toLowerCase())) teclas[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', (e) => { if (modo1Pessoa && teclas.hasOwnProperty(e.key.toLowerCase())) teclas[e.key.toLowerCase()] = false; });
+
+        function atualizarMovimento() {
+            if (!modo1Pessoa) return;
+            const direcao = new THREE.Vector3();
+            camera.getWorldDirection(direcao);
+            direcao.y = 0; direcao.normalize(); // Impede de voar pra cima/baixo no WASD
+            
+            const lado = new THREE.Vector3().crossVectors(camera.up, direcao).normalize();
+            
+            if (teclas.w) { camera.position.addScaledVector(direcao, velocidade); controls.target.addScaledVector(direcao, velocidade); }
+            if (teclas.s) { camera.position.addScaledVector(direcao, -velocidade); controls.target.addScaledVector(direcao, -velocidade); }
+            if (teclas.a) { camera.position.addScaledVector(lado, velocidade); controls.target.addScaledVector(lado, velocidade); }
+            if (teclas.d) { camera.position.addScaledVector(lado, -velocidade); controls.target.addScaledVector(lado, -velocidade); }
+        }
+
+        // --- 8. LOOP DE ANIMAÇÃO ---
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            atualizarMovimento();
+            controls.update();
+            renderer.render(scene, camera);
+        }
         animate();
     </script>
 </body>
