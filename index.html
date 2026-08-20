@@ -17,10 +17,10 @@
         .btn-status { background: #8e44ad; } 
 
         /* HUD Global (Topo Centro) */
-        #hud-topo { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: #252423; display: flex; gap: 30px; padding: 12px 35px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 20; border-bottom: 4px solid #0078D4; }
-        .hud-box { text-align: center; color: #fff; min-width: 90px; }
+        #hud-topo { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: #252423; display: flex; gap: 25px; padding: 12px 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 20; border-bottom: 4px solid #0078D4; }
+        .hud-box { text-align: center; color: #fff; min-width: 80px; }
         .hud-box .titulo { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; font-weight: bold; }
-        .hud-box .valor { font-size: 22px; font-weight: bold; }
+        .hud-box .valor { font-size: 20px; font-weight: bold; }
 
         /* Placas de Corredor (CSS2D) - Apenas 3 Placas */
         .placa-corredor { background: rgba(0, 0, 0, 0.85); color: #ffffff; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 16px; border: 2px solid #0078D4; pointer-events: none; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
@@ -32,7 +32,7 @@
         .tt-label { color: #666; }
         .tt-value { font-weight: bold; color: #111; text-align: right; margin-left: 20px; }
 
-        /* Painel Lateral KPI (Opcional ao clicar) */
+        /* Painel Lateral KPI (Ao clicar na prateleira) */
         #painel-kpi { position: absolute; top: 15px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.3); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
         #painel-kpi .cabecalho { background: #f8f9fa; color: #333; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid #eee; }
         #painel-kpi .fechar { cursor: pointer; font-size: 20px; color: #999; line-height: 1; }
@@ -76,12 +76,17 @@
             <span class="titulo">Ocupação</span>
             <span class="valor" id="hud-pct">0%</span>
         </div>
+        <!-- Contador de Registros Lidos para facilitar seu diagnóstico -->
+        <div class="hud-box" style="border-left: 2px solid #555; padding-left: 20px;">
+            <span class="titulo">Lidos do PBI</span>
+            <span class="valor" id="hud-debug" style="color: #2ecc71;">0</span>
+        </div>
     </div>
 
     <!-- Tooltip -->
     <div id="tooltip"></div>
 
-    <!-- Painel Lateral KPI (Ao clicar na prateleira) -->
+    <!-- Painel Lateral KPI -->
     <div id="painel-kpi">
         <div class="cabecalho">
             <span id="kpi-endereco">Endereço</span>
@@ -108,44 +113,74 @@
         let modoStatusAtivo = false;
 
         // Atualiza os valores do HUD do Topo
-        function atualizarHUD() {
+        function atualizarHUD(qtdLidos = 0) {
             let capTotal = 0, estTotal = 0;
+            let objCount = 0;
             for (const key in dadosMap) {
                 capTotal += Number(dadosMap[key].capacidade) || 0;
                 estTotal += Number(dadosMap[key].estoque) || 0;
+                objCount++;
             }
             document.getElementById('hud-cap').innerText = capTotal;
             document.getElementById('hud-est').innerText = estTotal;
             const pct = capTotal > 0 ? Math.round((estTotal / capTotal) * 100) : 0;
             document.getElementById('hud-pct').innerText = pct + '%';
+            document.getElementById('hud-debug').innerText = objCount; // Atualiza a contagem visual
         }
 
         window.addEventListener('message', function(event) {
             if (event.data && event.data.tipo === 'dadosPowerBI') {
+                
+                let payload = event.data.dadosEstoque;
+                
+                // Conversão forçada se vier como string do iframe
+                if (typeof payload === 'string') {
+                    try { payload = JSON.parse(payload); } catch(e) { console.warn("Erro ao ler JSON", e); }
+                }
+
                 dadosMap = {};
-                if (Array.isArray(event.data.dadosEstoque)) {
-                    event.data.dadosEstoque.forEach(d => { 
-                        // Mapeamento "À prova de balas" (Ignora se o PBI manda maiúscula ou minúscula)
-                        const enderecoRaw = d.Endereco || d.endereco || d.ENDERECO;
+                let countLidos = 0;
+                
+                // LEITURA BLINDADA (Ignora maiúsculas/minúsculas e força números)
+                if (Array.isArray(payload)) {
+                    payload.forEach(item => { 
+                        // Transforma todas as chaves em minúsculas para não dar erro
+                        const d = {};
+                        for (let k in item) { d[k.toLowerCase()] = item[k]; }
+
+                        const enderecoRaw = d['endereco'] || d['endereço'] || '';
+                        
                         if(enderecoRaw) {
-                            const endKey = enderecoRaw.toString().trim().toUpperCase();
-                            dadosMap[endKey] = {
-                                produto: d.Produto || d.produto || 'N/A',
-                                estoque: d.Estoque || d.estoque || 0,
-                                capacidade: d.Capacidade || d.capacidade || 0,
-                                status: d.Status || d.status || 'OK'
+                            // Limpa qualquer espaço em branco acidental do DAX e joga pra maiúscula (ex: 'A01-N01')
+                            const endKey = enderecoRaw.toString().replace(/\s/g, '').toUpperCase();
+                            
+                            // Função que garante que estoques e capacidades virem números reais
+                            const extrairNum = (v) => {
+                                if(v == null) return 0;
+                                if(typeof v === 'number') return v;
+                                const str = v.toString().replace(',', '.').replace(/[^\d.-]/g, '');
+                                return parseFloat(str) || 0;
                             };
+
+                            dadosMap[endKey] = {
+                                produto: d['produto'] || 'N/A',
+                                estoque: extrairNum(d['estoque']),
+                                capacidade: extrairNum(d['capacidade']),
+                                status: (d['status'] || 'OK').toString().trim()
+                            };
+                            countLidos++;
                         }
                     });
                 }
                 
-                if (event.data.selecionados && event.data.selecionados.trim() !== "") {
-                    arrSelecionados = event.data.selecionados.split(',').map(s => s.trim().toUpperCase());
+                let sel = event.data.selecionados;
+                if (sel && typeof sel === 'string' && sel.trim() !== "") {
+                    arrSelecionados = sel.split(',').map(s => s.trim().toUpperCase());
                 } else {
                     arrSelecionados = [];
                 }
                 
-                atualizarHUD();
+                atualizarHUD(countLidos);
                 aplicarFiltrosECores();
             }
         });
@@ -352,7 +387,9 @@
                 }
 
                 if (end) {
-                    const info = dadosMap[end.toUpperCase()] || { produto: 'N/A', estoque: 0, capacidade: 0, status: 'Sem Info' };
+                    const endFormatado = end.toUpperCase();
+                    // Busca na memória baseada na chave limpa do endereço
+                    const info = dadosMap[endFormatado] || { produto: 'N/A', estoque: 0, capacidade: 0, status: 'Sem Info' };
                     
                     const cap = Number(info.capacidade) || 0;
                     const est = Number(info.estoque) || 0;
@@ -365,7 +402,7 @@
                     
                     // Tooltip reconstruído idêntico ao da imagem
                     tooltip.innerHTML = `
-                        <div class="tt-header">${end}</div>
+                        <div class="tt-header">${endFormatado}</div>
                         <div class="tt-line"><span class="tt-label">Produto</span><span class="tt-value">${info.produto}</span></div>
                         <div class="tt-line"><span class="tt-label">Estoque</span><span class="tt-value">${info.estoque}</span></div>
                         <div class="tt-line"><span class="tt-label">Capacidade</span><span class="tt-value">${info.capacidade}</span></div>
@@ -397,7 +434,7 @@
                 }
 
                 if (end) {
-                    exibirKPI(end, dadosMap[end.toUpperCase()] || {});
+                    exibirKPI(end.toUpperCase(), dadosMap[end.toUpperCase()] || {});
                 }
             }
         });
