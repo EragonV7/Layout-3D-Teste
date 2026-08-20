@@ -752,9 +752,15 @@
             const boxEndereco = new THREE.Box3();
             let achou = false;
 
+            const regexComparacao = /([A-Z]\d{2}-N\d{2})/;
             modeloGeral.traverse(child => {
                 if (!child.isMesh) return;
-                if (getEnderecoDaHierarquia(child) !== enderecoCompleto) return;
+                const endFull = getEnderecoDaHierarquia(child);
+                if (!endFull) return;
+                // O nome do objeto no GLB costuma vir com prefixo (ex: "IfcBuildingElementProxyA01-N01"),
+                // então extraímos só o código do endereço pra comparar, em vez de comparar a string inteira.
+                const m = endFull.match(regexComparacao);
+                if (!m || m[1] !== enderecoCompleto) return;
                 boxEndereco.union(new THREE.Box3().setFromObject(child));
                 achou = true;
             });
