@@ -80,6 +80,10 @@
             <span class="titulo">Lidos do PBI</span>
             <span class="valor" id="hud-debug" style="color: #2ecc71;">0</span>
         </div>
+        <div class="hud-box" style="border-left: 2px solid #555; padding-left: 20px;">
+            <span class="titulo">Empilhadeira</span>
+            <span class="valor" id="hud-emp" style="color: #f1c40f;">Inativa</span>
+        </div>
     </div>
 
     <!-- Tooltip -->
@@ -176,6 +180,7 @@
                 
                 atualizarHUD(countLidos);
                 aplicarFiltrosECores();
+                atualizarEmpilhadeiraSelecao();
             }
         });
 
@@ -245,6 +250,8 @@
             });
 
             criar3PlacasCorredor();
+            calcularInfoCorredores();
+            criarEmpilhadeiraGrupo();
             aplicarFiltrosECores();
         });
 
@@ -589,10 +596,316 @@
             }
         }
 
+        // --- 9B. EMPILHADEIRA - TRAJETO AUTOMÁTICO (ativa com 1 a 3 endereços selecionados) ---
+        // Ajuste estas duas constantes se a empilhadeira aparecer dentro da prateleira
+        // ou muito longe/no lado errado do corredor real do seu armazém.
+        const MARGEM_LATERAL_CORREDOR = 1.8; // distância da linha central do corredor até o corpo da empilhadeira
+        const LADO_CORREDOR = 1;             // 1 ou -1: lado do corredor por onde ela circula
+
+        let empilhadeiraGrupo = null;
+        let empGiroflex = null;
+        let empTorreIntermediaria = null;
+        let empCarroMovel = null;
+        let chaoYReal = 0;
+        let corredorInfo = {};
+
+        let empilhadeiraAtiva = false;
+        let filaEnderecosEmp = [];
+        let indiceAlvoEmp = 0;
+        let estadoEmp = 'PARADA';
+        let progressoEmp = 0;
+        let rotaEmpAtiva = null;
+        let alturaAlvoGarfoEmp = 0;
+        let alturaAtualGarfoEmp = 0;
+        let tempoEsperaEmp = 0;
+        let anguloAtualYEmp = 0;
+        let anguloAlvoYEmp = 0;
+        let chaveFilaAtual = "";
+
+        function criarEmpilhadeiraGrupo() {
+            if (empilhadeiraGrupo) return;
+            empilhadeiraGrupo = new THREE.Group();
+
+            const corpo = new THREE.Mesh(
+                new THREE.BoxGeometry(1.2, 0.7, 1.8),
+                new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.3 })
+            );
+            corpo.position.y = 0.35;
+            corpo.castShadow = true;
+            empilhadeiraGrupo.add(corpo);
+
+            const tetoMat = new THREE.MeshStandardMaterial({ color: 0x222f3e });
+            const teto = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 1.0), tetoMat);
+            teto.position.set(0, 1.4, -0.2);
+
+            const colunaCab = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.1, 0.08), tetoMat);
+            colunaCab.position.set(-0.45, 0.85, 0.2);
+            const c2 = colunaCab.clone(); c2.position.set(0.45, 0.85, 0.2);
+            const c3 = colunaCab.clone(); c3.position.set(-0.45, 0.85, -0.6);
+            const c4 = colunaCab.clone(); c4.position.set(0.45, 0.85, -0.6);
+            empilhadeiraGrupo.add(teto, colunaCab, c2, c3, c4);
+
+            const banco = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            banco.position.set(0, 0.6, -0.3);
+            const volante = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 12), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            volante.rotation.x = Math.PI / 3;
+            volante.position.set(0, 1.0, 0.1);
+
+            const giroflexMat = new THREE.MeshBasicMaterial({ color: 0xff4757 });
+            empGiroflex = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.15, 12), giroflexMat);
+            empGiroflex.position.set(0, 1.5, -0.2);
+            empilhadeiraGrupo.add(banco, volante, empGiroflex);
+
+            const rodaMat = new THREE.MeshStandardMaterial({ color: 0x1e272e });
+            const r1 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16), rodaMat);
+            r1.rotation.z = Math.PI / 2; r1.position.set(-0.65, 0.3, 0.6);
+            const r2 = r1.clone(); r2.position.set(0.65, 0.3, 0.6);
+            const r3 = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.9, 16), rodaMat);
+            r3.rotation.z = Math.PI / 2; r3.position.set(0, 0.25, -0.7);
+            empilhadeiraGrupo.add(r1, r2, r3);
+
+            const torreExterna = new THREE.Mesh(
+                new THREE.BoxGeometry(0.9, 1.9, 0.15),
+                new THREE.MeshStandardMaterial({ color: 0x4b6584, metalness: 0.8 })
+            );
+            torreExterna.position.set(0, 0.95, 0.95);
+            empilhadeiraGrupo.add(torreExterna);
+
+            empTorreIntermediaria = new THREE.Mesh(
+                new THREE.BoxGeometry(0.8, 1.8, 0.12),
+                new THREE.MeshStandardMaterial({ color: 0x778ca3, metalness: 0.8 })
+            );
+            empTorreIntermediaria.position.set(0, 0.9, 0.95);
+            empilhadeiraGrupo.add(empTorreIntermediaria);
+
+            empCarroMovel = new THREE.Group();
+            const encostoTorre = new THREE.Mesh(
+                new THREE.BoxGeometry(0.75, 1.8, 0.1),
+                new THREE.MeshStandardMaterial({ color: 0xa5b1c2, metalness: 0.9 })
+            );
+            encostoTorre.position.set(0, 0.9, 1.0);
+            empCarroMovel.add(encostoTorre);
+
+            const garfoMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9 });
+            const garfoE = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 1.1), garfoMat);
+            garfoE.position.set(-0.3, 0.25, 1.5);
+            const garfoD = garfoE.clone();
+            garfoD.position.set(0.3, 0.25, 1.5);
+
+            const palete = new THREE.Mesh(
+                new THREE.BoxGeometry(1.0, 0.1, 1.0),
+                new THREE.MeshStandardMaterial({ color: 0xd35400, roughness: 0.9 })
+            );
+            palete.position.set(0, 0.32, 1.5);
+
+            const carga = new THREE.Mesh(
+                new THREE.BoxGeometry(0.9, 0.9, 0.9),
+                new THREE.MeshStandardMaterial({ color: 0xe67e22, roughness: 0.4 })
+            );
+            carga.position.set(0, 0.82, 1.5);
+            carga.castShadow = true;
+
+            empCarroMovel.add(garfoE, garfoD, palete, carga);
+            empCarroMovel.position.set(0, 0, 0);
+            empilhadeiraGrupo.add(empCarroMovel);
+
+            empilhadeiraGrupo.visible = false;
+            scene.add(empilhadeiraGrupo);
+
+            chaoYReal = boxGeral ? boxGeral.min.y : 0;
+            empilhadeiraGrupo.position.set(0, chaoYReal + 0.05, 0);
+        }
+
+        // Calcula, para cada corredor (A, B, C...), a caixa delimitadora REAL no GLB
+        // e define qual eixo é a direção de deslocamento (o maior lado da caixa)
+        function calcularInfoCorredores() {
+            corredorInfo = {};
+            if (!modeloGeral) return;
+
+            const caixasPorLetra = {};
+
+            modeloGeral.traverse(child => {
+                if (!child.isMesh) return;
+                const end = getEnderecoDaHierarquia(child);
+                if (!end) return;
+                const match = end.match(/([A-Z])\d{2}-N\d{2}/);
+                if (!match) return;
+                const letra = match[1];
+
+                if (!caixasPorLetra[letra]) caixasPorLetra[letra] = new THREE.Box3();
+                caixasPorLetra[letra].union(new THREE.Box3().setFromObject(child));
+            });
+
+            for (const letra in caixasPorLetra) {
+                const box = caixasPorLetra[letra];
+                const centro = box.getCenter(new THREE.Vector3());
+                const tamanho = box.getSize(new THREE.Vector3());
+                const eixoDominante = tamanho.x >= tamanho.z ? 'x' : 'z';
+                corredorInfo[letra] = { box, centro, tamanho, eixoDominante };
+            }
+        }
+
+        // Acha a posição real (mundo) de um endereço específico (ex: "A01-N01") dentro do GLB
+        // e calcula o ponto onde a empilhadeira deve parar SEM entrar na prateleira.
+        function getPosicaoRealEndereco(enderecoCompleto) {
+            if (!modeloGeral) return null;
+            const boxEndereco = new THREE.Box3();
+            let achou = false;
+
+            modeloGeral.traverse(child => {
+                if (!child.isMesh) return;
+                if (getEnderecoDaHierarquia(child) !== enderecoCompleto) return;
+                boxEndereco.union(new THREE.Box3().setFromObject(child));
+                achou = true;
+            });
+
+            if (!achou) return null;
+
+            const centro = boxEndereco.getCenter(new THREE.Vector3());
+            const match = enderecoCompleto.match(/([A-Z])\d{2}-N\d{2}/);
+            const letra = match ? match[1] : null;
+            const info = letra ? corredorInfo[letra] : null;
+
+            let alvoX = centro.x;
+            let alvoZ = centro.z;
+
+            if (info) {
+                if (info.eixoDominante === 'z') {
+                    alvoX = info.centro.x + (LADO_CORREDOR * (info.tamanho.x / 2 + MARGEM_LATERAL_CORREDOR));
+                } else {
+                    alvoZ = info.centro.z + (LADO_CORREDOR * (info.tamanho.z / 2 + MARGEM_LATERAL_CORREDOR));
+                }
+            }
+
+            return {
+                posAlvo: new THREE.Vector3(alvoX, chaoYReal + 0.05, alvoZ),
+                pontoFrente: new THREE.Vector3(centro.x, chaoYReal + 0.05, centro.z),
+                alturaGarfo: Math.max(0, (boxEndereco.min.y - chaoYReal))
+            };
+        }
+
+        // Chamada sempre que a seleção/filtro do Power BI mudar (via postMessage)
+        function atualizarEmpilhadeiraSelecao() {
+            const hudEmp = document.getElementById('hud-emp');
+            if (!modeloGeral || !empilhadeiraGrupo) return;
+
+            if (arrSelecionados.length < 1 || arrSelecionados.length > 3) {
+                desativarEmpilhadeira();
+                if (hudEmp) hudEmp.innerText = 'Inativa';
+                return;
+            }
+
+            const chaveNova = arrSelecionados.slice().sort().join('|');
+            if (chaveNova === chaveFilaAtual && empilhadeiraAtiva) return; // mesma seleção, não reinicia o ciclo
+
+            const novaFila = [];
+            const regexEnd = /([A-Z]\d{2}-N\d{2})/;
+            arrSelecionados.forEach(sel => {
+                const m = sel.match(regexEnd);
+                const enderecoNormalizado = m ? m[1] : sel;
+                const pos = getPosicaoRealEndereco(enderecoNormalizado);
+                if (pos) novaFila.push({ endereco: enderecoNormalizado, ...pos });
+            });
+
+            if (novaFila.length === 0) {
+                desativarEmpilhadeira();
+                if (hudEmp) hudEmp.innerText = 'Inativa';
+                return;
+            }
+
+            filaEnderecosEmp = novaFila;
+            chaveFilaAtual = chaveNova;
+            indiceAlvoEmp = 0;
+            empilhadeiraAtiva = true;
+            empilhadeiraGrupo.visible = true;
+            estadoEmp = 'ANDANDO';
+            montarRotaEmp();
+            if (hudEmp) hudEmp.innerText = 'Ativa (' + filaEnderecosEmp.length + ')';
+        }
+
+        function desativarEmpilhadeira() {
+            empilhadeiraAtiva = false;
+            filaEnderecosEmp = [];
+            chaveFilaAtual = "";
+            estadoEmp = 'PARADA';
+            if (empilhadeiraGrupo) empilhadeiraGrupo.visible = false;
+        }
+
+        function montarRotaEmp() {
+            if (!empilhadeiraGrupo || filaEnderecosEmp.length === 0) return;
+            const origem = empilhadeiraGrupo.position.clone();
+            origem.y = chaoYReal + 0.05;
+            const destino = filaEnderecosEmp[indiceAlvoEmp].posAlvo;
+            rotaEmpAtiva = new THREE.CatmullRomCurve3([origem, destino]);
+            alturaAlvoGarfoEmp = filaEnderecosEmp[indiceAlvoEmp].alturaGarfo;
+            progressoEmp = 0;
+        }
+
+        function moverEmpilhadeira() {
+            if (!empilhadeiraAtiva || !empilhadeiraGrupo || filaEnderecosEmp.length === 0) return;
+            const alvo = filaEnderecosEmp[indiceAlvoEmp];
+
+            if (estadoEmp === 'ANDANDO') {
+                progressoEmp += 0.006;
+                if (progressoEmp >= 1) {
+                    progressoEmp = 1;
+                    empilhadeiraGrupo.position.copy(alvo.posAlvo);
+                    estadoEmp = 'GIRANDO';
+                    const dir = new THREE.Vector3().subVectors(alvo.pontoFrente, empilhadeiraGrupo.position);
+                    anguloAlvoYEmp = Math.atan2(dir.x, dir.z);
+                } else {
+                    const p = rotaEmpAtiva.getPointAt(progressoEmp);
+                    const prox = rotaEmpAtiva.getPointAt(Math.min(progressoEmp + 0.01, 1));
+                    empilhadeiraGrupo.position.copy(p);
+                    empilhadeiraGrupo.lookAt(prox);
+                    anguloAtualYEmp = empilhadeiraGrupo.rotation.y;
+                }
+            }
+            else if (estadoEmp === 'GIRANDO') {
+                anguloAtualYEmp = THREE.MathUtils.lerp(anguloAtualYEmp, anguloAlvoYEmp, 0.08);
+                empilhadeiraGrupo.rotation.y = anguloAtualYEmp;
+                if (Math.abs(anguloAtualYEmp - anguloAlvoYEmp) < 0.02) {
+                    estadoEmp = 'SUBINDO';
+                }
+            }
+            else if (estadoEmp === 'SUBINDO') {
+                alturaAtualGarfoEmp = THREE.MathUtils.lerp(alturaAtualGarfoEmp, alturaAlvoGarfoEmp, 0.05);
+                if (Math.abs(alturaAtualGarfoEmp - alturaAlvoGarfoEmp) < 0.05) {
+                    alturaAtualGarfoEmp = alturaAlvoGarfoEmp;
+                    estadoEmp = 'ESPERANDO';
+                    tempoEsperaEmp = 0;
+                }
+            }
+            else if (estadoEmp === 'ESPERANDO') {
+                tempoEsperaEmp++;
+                if (tempoEsperaEmp > 120) {
+                    estadoEmp = 'DESCENDO';
+                }
+            }
+            else if (estadoEmp === 'DESCENDO') {
+                alturaAtualGarfoEmp = THREE.MathUtils.lerp(alturaAtualGarfoEmp, 0, 0.05);
+                if (Math.abs(alturaAtualGarfoEmp) < 0.05) {
+                    alturaAtualGarfoEmp = 0;
+                    indiceAlvoEmp = (indiceAlvoEmp + 1) % filaEnderecosEmp.length;
+                    estadoEmp = 'ANDANDO';
+                    montarRotaEmp();
+                }
+            }
+
+            if (empCarroMovel) empCarroMovel.position.y = alturaAtualGarfoEmp;
+            if (empTorreIntermediaria) empTorreIntermediaria.position.y = 0.9 + (alturaAtualGarfoEmp * 0.5);
+
+            if (empGiroflex) {
+                const piscaLigado = Math.floor(Date.now() / 200) % 2 === 0;
+                empGiroflex.material.color.setHex(piscaLigado ? 0xff4757 : 0xfffa65);
+            }
+        }
+
         // --- 9. LOOP DE ANIMAÇÃO ---
         function animate() {
             requestAnimationFrame(animate);
             moverWASD();
+            moverEmpilhadeira();
             controls.update();
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
