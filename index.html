@@ -19,13 +19,12 @@
         .hud-progress-bg { width: 100%; height: 6px; background-color: #e0e0e0; border-radius: 4px; margin-top: 8px; overflow: hidden; }
         .hud-progress-bar { height: 100%; width: 0%; border-radius: 4px; transition: width 1s ease; }
         #aviso-fps { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 12px; z-index: 50; display: none; }
-        #tooltip { position: absolute; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 6px 10px; border-radius: 4px; display: none; pointer-events: none; z-index: 20; font-size: 13px; }
-        #legenda { position: absolute; bottom: 15px; left: 15px; z-index: 10; background: rgba(255,255,255,0.92); padding: 10px 14px; border-radius: 6px; font-size: 12px; }
+        #tooltip { position: absolute; background: rgba(0, 0, 0, 0.9); color: #fff; padding: 8px 12px; border-radius: 4px; display: none; pointer-events: none; z-index: 9999; font-size: 13px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        #legenda { position: absolute; bottom: 15px; left: 15px; z-index: 10; background: rgba(255,255,255,0.92); padding: 10px 14px; border-radius: 6px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         #legenda .item { display: flex; align-items: center; margin-bottom: 4px; }
         #legenda .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; display: inline-block; }
     </style>
 
-    <!-- O MAPA DE IMPORTAÇÃO CORRIGE O ERRO "THREE" -->
     <script type="importmap">
       {
         "imports": {
@@ -40,6 +39,7 @@
         <button class='btn' id='btn-frente'>Frente</button>
         <button class='btn' id='btn-topo'>Topo</button>
         <button class='btn' id='btn-lado'>Lado</button>
+        <!-- Mantive os botões abaixo caso queira expandir depois, por enquanto focam a câmera -->
         <button class='btn' id='btn-modo'>Modo: Status</button>
         <button class='btn' id='btn-fps'>Visão: 1ª Pessoa</button>
     </div>
@@ -70,7 +70,6 @@
     <div id='canvas-container'></div>
 
     <script type='module'>
-        // AS IMPORTAÇÕES AGORA USAM O MAPA
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -99,18 +98,14 @@
         let chaoY = 0;
         let gruposGerais = {}; 
         const objetosCriticos = [];
-        let modoVisualizacao = 'STATUS'; 
 
-        // --- VARIÁVEIS QUE VÃO RECEBER OS DADOS DO POWER BI ---
         let dadosEstoque = [];
         let dadosMap = {};
         let listaSelecionadosLimpos = [];
 
-        // ESCUTAR O POWER BI
         window.addEventListener('message', function(event) {
             if (event.data && event.data.tipo === 'dadosPowerBI') {
                 dadosEstoque = event.data.dadosEstoque;
-                
                 const textoSelecionados = event.data.selecionados || '';
                 const listaSel = textoSelecionados !== '' ? textoSelecionados.split(',').map(s => s.trim()) : [];
                 listaSelecionadosLimpos = listaSel.map(s => extrairEndereco(s) || s);
@@ -218,15 +213,41 @@
             });
         }, 500);
 
-        // Tooltip Interativo
+        // --- CORREÇÃO 1: FUNÇÕES DOS BOTÕES DE CÂMERA ---
+        document.getElementById('btn-frente').addEventListener('click', () => {
+            if(!modeloGeral) return;
+            camera.position.set(centroGeral.x, centroGeral.y + tamanhoMax * 0.2, centroGeral.z + tamanhoMax * 0.8);
+            controls.target.copy(centroGeral);
+        });
+
+        document.getElementById('btn-topo').addEventListener('click', () => {
+            if(!modeloGeral) return;
+            camera.position.set(centroGeral.x, centroGeral.y + tamanhoMax, centroGeral.z + 0.1); // +0.1 para evitar bug de giro no eixo Y
+            controls.target.copy(centroGeral);
+        });
+
+        document.getElementById('btn-lado').addEventListener('click', () => {
+            if(!modeloGeral) return;
+            camera.position.set(centroGeral.x + tamanhoMax * 0.8, centroGeral.y + tamanhoMax * 0.2, centroGeral.z);
+            controls.target.copy(centroGeral);
+        });
+
+        // --- CORREÇÃO 2: TOOLTIP ADAPTADO PARA O IFRAME ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2(-2, -2);
         const tooltip = document.getElementById('tooltip');
 
-        window.addEventListener('mousemove', function (event) {
+        // Usando pointermove (melhor que mousemove para iframes/telas touch)
+        window.addEventListener('pointermove', function (event) {
             if (!modeloGeral) return;
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Pega as dimensões reais da tela onde o canvas está renderizado
+            const rect = renderer.domElement.getBoundingClientRect();
+            
+            // Calcula a posição do mouse de forma relativa ao iframe, não à janela inteira
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(modeloGeral, true);
             
@@ -251,6 +272,14 @@
                 document.body.style.cursor = 'default';
             }
         });
+
+        // Garantir que a tela se redimensione caso o visual do Power BI mude de tamanho
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
 
         function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
         animate();
