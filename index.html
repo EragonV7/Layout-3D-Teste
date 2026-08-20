@@ -2,35 +2,37 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Layout 3D - Power BI</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #f4f4f4; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { margin: 0; overflow: hidden; background: #f4f4f4; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1; }
         
-        /* Controles */
-        #ui-controles { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; }
-        .btn { background: #252423; color: #fff; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 13px; transition: background 0.3s; }
-        .btn:hover { background: #0078D4; }
+        /* Painel de Controles */
+        #ui-controles { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; max-width: 420px; }
+        .btn { background: #252423; color: #fff; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 13px; transition: background 0.3s, transform 0.1s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .btn:hover { background: #0078D4; transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
         .btn-toggle-ativo { background: #107c41 !important; } 
         .btn-status { background: #8e44ad; } 
 
-        /* Placas de Corredor (CSS2D) */
+        /* Placas de Corredor (CSS2D) - Apenas 3 Placas */
         .placa-corredor { background: rgba(0, 0, 0, 0.85); color: #ffffff; padding: 6px 16px; border-radius: 6px; font-weight: bold; font-size: 16px; border: 2px solid #0078D4; pointer-events: none; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
 
-        /* Tooltip */
-        #tooltip { position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 10px 14px; border-radius: 6px; display: none; pointer-events: none; z-index: 50; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 8px rgba(0,0,0,0.4); border-left: 3px solid #0078D4; }
+        /* Tooltip Flutuante */
+        #tooltip { position: absolute; background: rgba(15, 15, 15, 0.92); color: #ffffff; padding: 10px 14px; border-radius: 6px; display: none; pointer-events: none; z-index: 9999; font-size: 13px; line-height: 1.5; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border-left: 4px solid #0078D4; }
 
-        /* Painel KPI */
-        #painel-kpi { position: absolute; top: 15px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.4); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
-        #painel-kpi .cabecalho { background: #f8f9fa; color: #333; padding: 12px 15px; display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; border-bottom: 1px solid #eee; }
-        #painel-kpi .fechar { cursor: pointer; font-size: 18px; color: #999; }
+        /* Painel Lateral KPI */
+        #painel-kpi { position: absolute; top: 15px; right: 15px; width: 280px; z-index: 30; background: #ffffff; border-radius: 8px; box-shadow: 0px 8px 25px rgba(0,0,0,0.3); display: none; overflow: hidden; border-top: 4px solid #0078D4; }
+        #painel-kpi .cabecalho { background: #f8f9fa; color: #333; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid #eee; }
+        #painel-kpi .fechar { cursor: pointer; font-size: 20px; color: #999; line-height: 1; }
         #painel-kpi .fechar:hover { color: #e74c3c; }
         #painel-kpi .corpo { padding: 15px; }
         #painel-kpi .linha { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
         #painel-kpi .rotulo { color: #666; }
         #painel-kpi .valor { font-weight: bold; color: #222; text-align: right; }
         .barra-fundo { background: #e0e0e0; border-radius: 4px; height: 10px; margin-top: 5px; overflow: hidden; }
-        .barra-preenchida { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .barra-preenchida { height: 100%; border-radius: 4px; transition: width 0.5s ease, background 0.5s ease; }
     </style>
 
     <!-- Bibliotecas Three.js -->
@@ -52,7 +54,10 @@
     <div id="tooltip"></div>
 
     <div id="painel-kpi">
-        <div class="cabecalho"><span id="kpi-endereco">Endereço</span><span class="fechar" id="kpi-fechar">&times;</span></div>
+        <div class="cabecalho">
+            <span id="kpi-endereco">Endereço</span>
+            <span class="fechar" id="kpi-fechar">&times;</span>
+        </div>
         <div class="corpo">
             <div class="linha"><span class="rotulo">Produto</span><span class="valor" id="kpi-produto">-</span></div>
             <div class="linha"><span class="rotulo">Estoque</span><span class="valor" id="kpi-estoque">-</span></div>
@@ -81,7 +86,7 @@
                 }
                 
                 if (event.data.selecionados && event.data.selecionados.trim() !== "") {
-                    arrSelecionados = event.data.selecionados.split(',').map(s => s.trim());
+                    arrSelecionados = event.data.selecionados.split(',').map(s => s.trim().toUpperCase());
                 } else {
                     arrSelecionados = [];
                 }
@@ -90,20 +95,22 @@
             }
         });
 
-        // --- 2. CONFIGURAÇÃO DO THREE.JS ---
+        // --- 2. CONFIGURAÇÃO DA CENA THREE.JS ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xf4f4f4);
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.getElementById('canvas-container').appendChild(renderer.domElement);
         
         const labelRenderer = new THREE.CSS2DRenderer();
         labelRenderer.setSize(window.innerWidth, window.innerHeight);
         labelRenderer.domElement.style.position = 'absolute';
         labelRenderer.domElement.style.top = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none'; // Não intercepta o mouse
+        labelRenderer.domElement.style.left = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none'; // Garante que o CSS2D não trava cliques do mouse
         document.body.appendChild(labelRenderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -121,7 +128,7 @@
         let tamanhoMax = 0;
         let placasGeral = [];
 
-        // Raycaster e Interação
+        // Raycaster e Interações
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         const tooltip = document.getElementById('tooltip');
@@ -146,7 +153,8 @@
             
             controls.target.copy(centroGeral);
             camera.position.set(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
-            
+            controls.update();
+
             modeloGeral.traverse(child => {
                 if (child.isMesh) {
                     child.material = child.material.clone();
@@ -154,11 +162,11 @@
                 }
             });
 
-            criarPlacasCorredor();
+            criar3PlacasCorredor();
             aplicarFiltrosECores();
         });
 
-        // --- 4. FUNÇÕES DE SUPORTE E FILTROS ---
+        // --- 4. FUNÇÕES DE SUPORTE E LEITURA DE NOMES ---
         function corPorStatus(status) {
             const s = (status || '').toUpperCase();
             if (s === 'CRITICO' || s === 'CRÍTICO') return 0xe74c3c;
@@ -169,7 +177,10 @@
         function extrairEndereco(nome) { 
             if (!nome) return null;
             const m = nome.toUpperCase().match(/([A-Z]\d{2}-N\d{2})/); 
-            return m ? m[1] : null; 
+            if (m) return m[1];
+            const m2 = nome.toUpperCase().match(/([A-C]\d{2})/);
+            if (m2) return m2[1];
+            return null; 
         }
 
         function getEnderecoDaHierarquia(obj) { 
@@ -182,6 +193,7 @@
             return null; 
         }
 
+        // --- 5. APLICAR FILTROS (CORREÇÃO DO VISUAL ZUADO) ---
         function aplicarFiltrosECores() {
             if(!modeloGeral) return;
             
@@ -191,88 +203,90 @@
                 const end = getEnderecoDaHierarquia(child);
                 if (!end) return;
 
-                // Valida se o elemento do 3D está na lista selecionada no Power BI
                 const estaSelecionado = arrSelecionados.length === 0 || arrSelecionados.some(sel => sel.includes(end) || end.includes(sel));
 
                 if (!estaSelecionado) {
+                    // Fim do efeito preto/zuado: usa tom claro suave e z-buffer transparente desligado
                     child.material.transparent = true;
                     child.material.opacity = 0.12;
-                    child.material.depthWrite = false; // CORRIGE O EFEITO "ZUADO" NA TRANSPARÊNCIA
+                    child.material.depthWrite = false;
+                    child.material.color.setHex(0xdddddd); 
                 } else {
                     child.material.transparent = false;
                     child.material.opacity = 1.0;
-                    child.material.depthWrite = true; // RESTAURA PROFUNDIDADE NORMAL
-                }
+                    child.material.depthWrite = true;
 
-                if (modoStatusAtivo && dadosMap[end]) {
-                    const corHex = corPorStatus(dadosMap[end].status);
-                    child.material.color.setHex(corHex);
-                } else {
-                    if (child.userData.corOriginal !== undefined) {
-                        child.material.color.setHex(child.userData.corOriginal);
+                    if (modoStatusAtivo && dadosMap[end]) {
+                        const corHex = corPorStatus(dadosMap[end].status);
+                        child.material.color.setHex(corHex);
+                    } else {
+                        if (child.userData.corOriginal !== undefined) {
+                            child.material.color.setHex(child.userData.corOriginal);
+                        }
                     }
                 }
             });
         }
 
-        // --- 5. PLACAS DOS CORREDORES (Apenas Corredor A, B, C) ---
-        function criarPlacasCorredor() {
+        // --- 6. GERAR APENAS 3 PLACAS (CORREDOR A, B, C) ---
+        function criar3PlacasCorredor() {
             placasGeral.forEach(p => scene.remove(p));
             placasGeral = [];
 
-            const posicoesPorLetra = {};
+            const dadosPorLetra = {
+                'A': { soma: new THREE.Vector3(), count: 0, maxY: -Infinity },
+                'B': { soma: new THREE.Vector3(), count: 0, maxY: -Infinity },
+                'C': { soma: new THREE.Vector3(), count: 0, maxY: -Infinity }
+            };
+
+            if (!modeloGeral) return;
 
             modeloGeral.traverse(child => {
                 if (child.isMesh) {
                     const end = getEnderecoDaHierarquia(child);
                     if (end) {
-                        // Pega apenas a Letra principal (A, B ou C)
                         const letra = end.charAt(0).toUpperCase(); 
-                        if (['A', 'B', 'C'].includes(letra)) {
-                            if (!posicoesPorLetra[letra]) {
-                                posicoesPorLetra[letra] = { soma: new THREE.Vector3(), contador: 0, maxY: -Infinity };
-                            }
+                        if (dadosPorLetra[letra]) {
                             const pos = new THREE.Vector3();
                             child.getWorldPosition(pos);
-                            posicoesPorLetra[letra].soma.add(pos);
-                            posicoesPorLetra[letra].contador++;
+                            dadosPorLetra[letra].soma.add(pos);
+                            dadosPorLetra[letra].count++;
 
                             const box = new THREE.Box3().setFromObject(child);
-                            if (box.max.y > posicoesPorLetra[letra].maxY) {
-                                posicoesPorLetra[letra].maxY = box.max.y;
+                            if (box.max.y > dadosPorLetra[letra].maxY) {
+                                dadosPorLetra[letra].maxY = box.max.y;
                             }
                         }
                     }
                 }
             });
 
-            // Cria exatamente 3 placas
-            for (let letra of ['A', 'B', 'C']) {
-                if (posicoesPorLetra[letra] && posicoesPorLetra[letra].contador > 0) {
-                    const dados = posicoesPorLetra[letra];
-                    const centro = dados.soma.divideScalar(dados.contador);
+            ['A', 'B', 'C'].forEach(letra => {
+                const d = dadosPorLetra[letra];
+                if (d.count > 0) {
+                    const centro = d.soma.divideScalar(d.count);
 
                     const div = document.createElement('div');
                     div.className = 'placa-corredor';
-                    div.textContent = `Corredor ${letra}`;
+                    div.innerText = `Corredor ${letra}`;
 
                     const placaCSS = new THREE.CSS2DObject(div);
-                    placaCSS.position.set(centro.x, dados.maxY + 3.0, centro.z);
+                    placaCSS.position.set(centro.x, d.maxY + 3.0, centro.z);
                     scene.add(placaCSS);
                     placasGeral.push(placaCSS);
                 }
-            }
+            });
         }
 
-        // --- 6. RAYCASTER / TOOLTIP / FILTRO POR CLIQUE NO 3D ---
-        function atualizarMouse(e) {
+        // --- 7. MOUSE, TOOLTIP E CLIQUE ---
+        function atualizarPosicaoMouse(e) {
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
         }
 
         window.addEventListener('mousemove', (e) => {
-            atualizarMouse(e);
+            atualizarPosicaoMouse(e);
             if (!modeloGeral) return;
 
             raycaster.setFromCamera(mouse, camera);
@@ -303,7 +317,7 @@
             if (e.target.closest('#ui-controles') || e.target.closest('#painel-kpi')) return;
             if (!modeloGeral) return;
 
-            atualizarMouse(e);
+            atualizarPosicaoMouse(e);
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(modeloGeral.children, true);
 
@@ -315,16 +329,7 @@
                 }
 
                 if (end) {
-                    // Exibe KPI
                     exibirKPI(end, dadosMap[end] || {});
-
-                    // Notifica a janela pai (Power BI) para realizar a filtragem cruzada
-                    if (window.parent) {
-                        window.parent.postMessage({
-                            tipo: 'filtro3D',
-                            endereco: end
-                        }, '*');
-                    }
                 }
             }
         });
@@ -352,7 +357,7 @@
             painelKPI.style.display = 'none';
         });
 
-        // --- 7. BOTÕES E VISÃO ---
+        // --- 8. CONTROLES DE VISÃO E MOVIMENTO (WASD & BOTÕES) ---
         document.getElementById('btn-status').addEventListener('click', function() {
             modoStatusAtivo = !modoStatusAtivo;
             this.innerText = modoStatusAtivo ? 'Modo: Status (Ligado)' : 'Modo: Status (Desligado)';
@@ -381,7 +386,7 @@
             controls.update();
         });
 
-        // WASD
+        // Controle WASD
         const btnWASD = document.getElementById('btn-wasd');
         btnWASD.addEventListener('click', () => {
             modoWASD = !modoWASD;
@@ -433,7 +438,7 @@
             }
         }
 
-        // --- 8. LOOP DE ANIMAÇÃO ---
+        // --- 9. LOOP DE ANIMAÇÃO ---
         function animate() {
             requestAnimationFrame(animate);
             moverWASD();
