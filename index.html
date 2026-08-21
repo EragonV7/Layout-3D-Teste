@@ -95,6 +95,7 @@
         <button class="btn btn-status" id="btn-status">Modo: Status (Desligado)</button>
         <button class="btn" id="btn-wasd">Visão: 1ª Pessoa</button>
         <button class="btn btn-cinema" id="btn-cinema">Modo Cinemático</button>
+        <button class="btn btn-cinema" id="btn-bloom">Efeito Brilho</button>
     </div>
 
     <!-- HUD Geral do Topo -->
@@ -265,15 +266,16 @@
         // Se as libs de postprocessing não carregarem (ex: bloqueio de rede), o app
         // continua funcionando normalmente, só sem o efeito de brilho.
         let composer = null;
+        let bloomAtivo = false; // desligado por padrão - liga pelo botão "Efeito Brilho"
         try {
             if (window.THREE && THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
                 composer = new THREE.EffectComposer(renderer);
                 composer.addPass(new THREE.RenderPass(scene, camera));
                 const bloomPass = new THREE.UnrealBloomPass(
                     new THREE.Vector2(window.innerWidth, window.innerHeight),
-                    0.55,  // força do brilho
-                    0.35,  // raio do brilho
-                    0.86   // limiar (só brilha o que for bem claro/emissivo)
+                    0.18,  // força do brilho (era 0.55 - estava estourando as paredes)
+                    0.25,  // raio do brilho
+                    0.97   // limiar bem alto: só o que for quase branco puro/emissivo brilha
                 );
                 composer.addPass(bloomPass);
                 window.addEventListener('resize', () => composer.setSize(window.innerWidth, window.innerHeight));
@@ -675,6 +677,15 @@
             controls.autoRotateSpeed = 0.8;
             this.classList.toggle('btn-toggle-ativo', controls.autoRotate);
             this.innerText = controls.autoRotate ? 'Modo Cinemático (ON)' : 'Modo Cinemático';
+        });
+
+        document.getElementById('btn-bloom').addEventListener('click', function() {
+            bloomAtivo = !bloomAtivo;
+            this.classList.toggle('btn-toggle-ativo', bloomAtivo);
+            this.innerText = bloomAtivo ? 'Efeito Brilho (ON)' : 'Efeito Brilho';
+            if (!composer) {
+                console.warn('[VISUAL] Bloom não está disponível (libs não carregaram).');
+            }
         });
 
         document.getElementById('btn-frente').addEventListener('click', () => {
@@ -1197,7 +1208,7 @@
             moverEmpilhadeira();
             pulsarCriticos(tempo || 0);
             controls.update();
-            if (composer) {
+            if (composer && bloomAtivo) {
                 composer.render();
             } else {
                 renderer.render(scene, camera);
