@@ -51,6 +51,17 @@
         #hud-legenda .swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; }
         #hud-legenda .legenda-secao + .legenda-secao { margin-top: 12px; padding-top: 10px; border-top: 1px solid #444; }
         #hud-legenda .tecla { display: inline-block; background: #3a3a3a; border: 1px solid #555; border-radius: 4px; padding: 1px 7px; font-family: 'Consolas', monospace; font-weight: bold; margin-right: 3px; font-size: 11px; }
+
+        /* Tela de carregamento */
+        #tela-carregamento { position: fixed; inset: 0; background: #14161a; z-index: 999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; transition: opacity 0.7s ease; }
+        #tela-carregamento.escondida { opacity: 0; pointer-events: none; }
+        #tela-carregamento .spinner { width: 52px; height: 52px; border: 4px solid #2b2e33; border-top-color: #0078D4; border-radius: 50%; animation: girar-spinner 0.9s linear infinite; margin-bottom: 20px; }
+        #tela-carregamento .texto-carregamento { font-size: 13px; letter-spacing: 2px; color: #888; text-transform: uppercase; }
+        #tela-carregamento .pct-carregamento { font-size: 30px; font-weight: bold; margin-top: 8px; color: #fff; }
+        @keyframes girar-spinner { to { transform: rotate(360deg); } }
+
+        .btn-cinema { background: #16181c; border: 1px solid #444; }
+        .btn-cinema.btn-toggle-ativo { background: #0078D4 !important; border-color: #0078D4; }
     </style>
 
     <!-- Bibliotecas Three.js -->
@@ -58,9 +69,24 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    <!-- Pós-processamento (efeito de brilho/glow). Se algum desses falhar ao carregar,
+         o resto do visual continua funcionando normalmente sem o efeito. -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 </head>
 <body>
     
+    <!-- Tela de carregamento (fica na frente de tudo até o GLB terminar) -->
+    <div id="tela-carregamento">
+        <div class="spinner"></div>
+        <div class="texto-carregamento">Carregando armazém 3D</div>
+        <div class="pct-carregamento" id="pct-carregamento">0%</div>
+    </div>
+
     <!-- Controles -->
     <div id="ui-controles">
         <button class="btn" id="btn-frente">Frente</button>
@@ -68,6 +94,7 @@
         <button class="btn" id="btn-lado">Lado</button>
         <button class="btn btn-status" id="btn-status">Modo: Status (Desligado)</button>
         <button class="btn" id="btn-wasd">Visão: 1ª Pessoa</button>
+        <button class="btn btn-cinema" id="btn-cinema">Modo Cinemático</button>
     </div>
 
     <!-- HUD Geral do Topo -->
@@ -234,6 +261,56 @@
         dirLight.position.set(50, 150, 50);
         scene.add(dirLight);
 
+        // --- 2B. PÓS-PROCESSAMENTO (GLOW/BLOOM) - com fallback seguro ---
+        // Se as libs de postprocessing não carregarem (ex: bloqueio de rede), o app
+        // continua funcionando normalmente, só sem o efeito de brilho.
+        let composer = null;
+        try {
+            if (window.THREE && THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
+                composer = new THREE.EffectComposer(renderer);
+                composer.addPass(new THREE.RenderPass(scene, camera));
+                const bloomPass = new THREE.UnrealBloomPass(
+                    new THREE.Vector2(window.innerWidth, window.innerHeight),
+                    0.55,  // força do brilho
+                    0.35,  // raio do brilho
+                    0.86   // limiar (só brilha o que for bem claro/emissivo)
+                );
+                composer.addPass(bloomPass);
+                window.addEventListener('resize', () => composer.setSize(window.innerWidth, window.innerHeight));
+            }
+        } catch (e) {
+            console.warn('[VISUAL] Bloom/glow não pôde ser ativado, seguindo sem o efeito.', e);
+            composer = null;
+        }
+
+        // --- 2C. TWEEN SUAVE DE CÂMERA (usado nos botões de visão e na entrada cinematográfica) ---
+        let tweenCameraAtivo = null;
+        function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+        function tweenCamera(destPos, destTarget, duracaoMs, callback) {
+            if (tweenCameraAtivo) tweenCameraAtivo.cancelado = true;
+            const origemPos = camera.position.clone();
+            const origemTarget = controls.target.clone();
+            const inicio = performance.now();
+            const estado = { cancelado: false };
+            tweenCameraAtivo = estado;
+
+            function passo(agora) {
+                if (estado.cancelado) return;
+                const t = Math.min((agora - inicio) / duracaoMs, 1);
+                const te = easeInOutCubic(t);
+                camera.position.lerpVectors(origemPos, destPos, te);
+                controls.target.lerpVectors(origemTarget, destTarget, te);
+                controls.update();
+                if (t < 1) {
+                    requestAnimationFrame(passo);
+                } else {
+                    if (tweenCameraAtivo === estado) tweenCameraAtivo = null;
+                    if (callback) callback();
+                }
+            }
+            requestAnimationFrame(passo);
+        }
+
         let modeloGeral = null;
         let boxGeral = null;
         let centroGeral = new THREE.Vector3();
@@ -262,7 +339,18 @@
             tamanhoMax = Math.max(size.x, size.y, size.z);
             
             controls.target.copy(centroGeral);
-            camera.position.set(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
+            // Posição final (a mesma de sempre) - a câmera já nasce longe/de cima (ver mais abaixo)
+            // e faz um tween suave até aqui, em vez de "teleportar" direto.
+            const posFinalCamera = new THREE.Vector3(
+                centroGeral.x + (tamanhoMax * 0.8),
+                centroGeral.y + (tamanhoMax * 0.8),
+                centroGeral.z + (tamanhoMax * 0.8)
+            );
+            camera.position.set(
+                centroGeral.x + (tamanhoMax * 2.2),
+                centroGeral.y + (tamanhoMax * 2.6),
+                centroGeral.z + (tamanhoMax * 2.2)
+            );
             controls.update();
 
             modeloGeral.traverse(child => {
@@ -278,6 +366,20 @@
             console.log('[EMP] Corredores detectados no GLB:', Object.keys(corredorInfo), corredorInfo);
             console.log('[EMP] Empilhadeira criada. Grupo:', empilhadeiraGrupo);
             aplicarFiltrosECores();
+
+            // Esconde a tela de carregamento e faz a câmera "pousar" suavemente na posição inicial
+            const telaCarregamento = document.getElementById('tela-carregamento');
+            if (telaCarregamento) telaCarregamento.classList.add('escondida');
+            tweenCamera(posFinalCamera, centroGeral.clone(), 2200);
+        }, function (xhr) {
+            const pctEl = document.getElementById('pct-carregamento');
+            if (pctEl && xhr.total) {
+                pctEl.innerText = Math.min(100, Math.round((xhr.loaded / xhr.total) * 100)) + '%';
+            }
+        }, function (erro) {
+            console.error('[VISUAL] Falha ao carregar o modelo 3D:', erro);
+            const textoEl = document.querySelector('#tela-carregamento .texto-carregamento');
+            if (textoEl) textoEl.innerText = 'Erro ao carregar o modelo 3D';
         });
 
         // --- 4. FUNÇÕES DE SUPORTE E LEITURA DE NOMES ---
@@ -334,8 +436,11 @@
         }
 
         // --- 5. APLICAR FILTROS (CORREÇÃO DO VISUAL) ---
+        let meshesCriticos = [];
+
         function aplicarFiltrosECores() {
             if(!modeloGeral) return;
+            meshesCriticos = [];
             
             modeloGeral.traverse(child => {
                 if (!child.isMesh) return;
@@ -374,10 +479,16 @@
                     if (modoStatusAtivo && info) {
                         const corHex = corPorStatus(info.status);
                         child.material.color.setHex(corHex);
+                        const statusUpper = (info.status || '').toUpperCase();
+                        if (statusUpper === 'CRITICO' || statusUpper === 'CRÍTICO') {
+                            if (!child.material.emissive) child.material.emissive = new THREE.Color(0x000000);
+                            meshesCriticos.push(child);
+                        }
                     } else {
                         if (child.userData.corOriginal !== undefined) {
                             child.material.color.setHex(child.userData.corOriginal);
                         }
+                        if (child.material.emissive) child.material.emissive.setHex(0x000000);
                     }
                 }
             });
@@ -559,25 +670,29 @@
             atualizarHudLegenda();
         });
 
+        document.getElementById('btn-cinema').addEventListener('click', function() {
+            controls.autoRotate = !controls.autoRotate;
+            controls.autoRotateSpeed = 0.8;
+            this.classList.toggle('btn-toggle-ativo', controls.autoRotate);
+            this.innerText = controls.autoRotate ? 'Modo Cinemático (ON)' : 'Modo Cinemático';
+        });
+
         document.getElementById('btn-frente').addEventListener('click', () => {
             if(!centroGeral) return;
-            camera.position.set(centroGeral.x, centroGeral.y + (tamanhoMax * 0.2), centroGeral.z + (tamanhoMax * 1.2));
-            controls.target.copy(centroGeral);
-            controls.update();
+            const dest = new THREE.Vector3(centroGeral.x, centroGeral.y + (tamanhoMax * 0.2), centroGeral.z + (tamanhoMax * 1.2));
+            tweenCamera(dest, centroGeral.clone(), 900);
         });
 
         document.getElementById('btn-topo').addEventListener('click', () => {
             if(!centroGeral) return;
-            camera.position.set(centroGeral.x, centroGeral.y + (tamanhoMax * 1.5), centroGeral.z + 0.1);
-            controls.target.copy(centroGeral);
-            controls.update();
+            const dest = new THREE.Vector3(centroGeral.x, centroGeral.y + (tamanhoMax * 1.5), centroGeral.z + 0.1);
+            tweenCamera(dest, centroGeral.clone(), 900);
         });
 
         document.getElementById('btn-lado').addEventListener('click', () => {
             if(!centroGeral) return;
-            camera.position.set(centroGeral.x + (tamanhoMax * 1.2), centroGeral.y + (tamanhoMax * 0.2), centroGeral.z);
-            controls.target.copy(centroGeral);
-            controls.update();
+            const dest = new THREE.Vector3(centroGeral.x + (tamanhoMax * 1.2), centroGeral.y + (tamanhoMax * 0.2), centroGeral.z);
+            tweenCamera(dest, centroGeral.clone(), 900);
         });
 
         const btnWASD = document.getElementById('btn-wasd');
@@ -587,15 +702,15 @@
                 btnWASD.classList.add('btn-toggle-ativo');
                 btnWASD.innerText = 'Visão: 1ª Pessoa (ON)';
                 const chaoY = boxGeral ? boxGeral.min.y : 0;
-                camera.position.set(centroGeral.x, chaoY + 1.8, centroGeral.z + (tamanhoMax * 0.3));
-                controls.target.set(centroGeral.x, chaoY + 1.8, centroGeral.z);
+                const dest = new THREE.Vector3(centroGeral.x, chaoY + 1.8, centroGeral.z + (tamanhoMax * 0.3));
+                const destTarget = new THREE.Vector3(centroGeral.x, chaoY + 1.8, centroGeral.z);
+                tweenCamera(dest, destTarget, 900);
             } else {
                 btnWASD.classList.remove('btn-toggle-ativo');
                 btnWASD.innerText = 'Visão: 1ª Pessoa';
-                camera.position.set(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
-                controls.target.copy(centroGeral);
+                const dest = new THREE.Vector3(centroGeral.x + (tamanhoMax * 0.8), centroGeral.y + (tamanhoMax * 0.8), centroGeral.z + (tamanhoMax * 0.8));
+                tweenCamera(dest, centroGeral.clone(), 900);
             }
-            controls.update();
             atualizarHudLegenda();
         });
 
@@ -1063,13 +1178,30 @@
             atualizarEmpilhadeiraSelecao();
         };
 
+        // Pulso suave nos itens com status crítico (emissive oscilando) - só roda quando existe algum
+        function pulsarCriticos(tempo) {
+            if (meshesCriticos.length === 0) return;
+            const intensidade = (Math.sin(tempo / 300) + 1) / 2 * 0.6; // 0 a 0.6
+            for (let i = 0; i < meshesCriticos.length; i++) {
+                const mesh = meshesCriticos[i];
+                if (mesh.material && mesh.material.emissive) {
+                    mesh.material.emissive.setRGB(intensidade, 0, 0);
+                }
+            }
+        }
+
         // --- 9. LOOP DE ANIMAÇÃO ---
-        function animate() {
+        function animate(tempo) {
             requestAnimationFrame(animate);
             moverWASD();
             moverEmpilhadeira();
+            pulsarCriticos(tempo || 0);
             controls.update();
-            renderer.render(scene, camera);
+            if (composer) {
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
             labelRenderer.render(scene, camera);
         }
         animate();
