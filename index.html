@@ -69,14 +69,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
-    <!-- Pós-processamento (efeito de brilho/glow). Se algum desses falhar ao carregar,
-         o resto do visual continua funcionando normalmente sem o efeito. -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 </head>
 <body>
     
@@ -95,7 +87,6 @@
         <button class="btn btn-status" id="btn-status">Modo: Status (Desligado)</button>
         <button class="btn" id="btn-wasd">Visão: 1ª Pessoa</button>
         <button class="btn btn-cinema" id="btn-cinema">Modo Cinemático</button>
-        <button class="btn btn-cinema" id="btn-bloom">Efeito Brilho</button>
     </div>
 
     <!-- HUD Geral do Topo -->
@@ -261,29 +252,6 @@
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(50, 150, 50);
         scene.add(dirLight);
-
-        // --- 2B. PÓS-PROCESSAMENTO (GLOW/BLOOM) - com fallback seguro ---
-        // Se as libs de postprocessing não carregarem (ex: bloqueio de rede), o app
-        // continua funcionando normalmente, só sem o efeito de brilho.
-        let composer = null;
-        let bloomAtivo = false; // desligado por padrão - liga pelo botão "Efeito Brilho"
-        try {
-            if (window.THREE && THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
-                composer = new THREE.EffectComposer(renderer);
-                composer.addPass(new THREE.RenderPass(scene, camera));
-                const bloomPass = new THREE.UnrealBloomPass(
-                    new THREE.Vector2(window.innerWidth, window.innerHeight),
-                    0.18,  // força do brilho (era 0.55 - estava estourando as paredes)
-                    0.25,  // raio do brilho
-                    0.97   // limiar bem alto: só o que for quase branco puro/emissivo brilha
-                );
-                composer.addPass(bloomPass);
-                window.addEventListener('resize', () => composer.setSize(window.innerWidth, window.innerHeight));
-            }
-        } catch (e) {
-            console.warn('[VISUAL] Bloom/glow não pôde ser ativado, seguindo sem o efeito.', e);
-            composer = null;
-        }
 
         // --- 2C. TWEEN SUAVE DE CÂMERA (usado nos botões de visão e na entrada cinematográfica) ---
         let tweenCameraAtivo = null;
@@ -677,15 +645,6 @@
             controls.autoRotateSpeed = 0.8;
             this.classList.toggle('btn-toggle-ativo', controls.autoRotate);
             this.innerText = controls.autoRotate ? 'Modo Cinemático (ON)' : 'Modo Cinemático';
-        });
-
-        document.getElementById('btn-bloom').addEventListener('click', function() {
-            bloomAtivo = !bloomAtivo;
-            this.classList.toggle('btn-toggle-ativo', bloomAtivo);
-            this.innerText = bloomAtivo ? 'Efeito Brilho (ON)' : 'Efeito Brilho';
-            if (!composer) {
-                console.warn('[VISUAL] Bloom não está disponível (libs não carregaram).');
-            }
         });
 
         document.getElementById('btn-frente').addEventListener('click', () => {
@@ -1208,11 +1167,7 @@
             moverEmpilhadeira();
             pulsarCriticos(tempo || 0);
             controls.update();
-            if (composer && bloomAtivo) {
-                composer.render();
-            } else {
-                renderer.render(scene, camera);
-            }
+            renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
         }
         animate();
