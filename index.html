@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Layout 3D - Power BI</title>
     <style>
-        body { margin: 0; overflow: hidden; background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; overflow: hidden; background: #0b0d10; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1; }
         
         /* Painel de Controles (Câmeras e Status) - Mantido na Esquerda */
@@ -228,7 +228,7 @@
 
         // --- 2. CONFIGURAÇÃO DA CENA THREE.JS ---
         const scene = new THREE.Scene();
-        scene.background = null; // transparente: deixa o fundo da página do Power BI aparecer, sem moldura
+        scene.background = new THREE.Color(0x0b0d10); // cor escura fixa - troque o hex aqui pra ajustar o tom
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
