@@ -43,6 +43,14 @@
         #painel-kpi .valor { font-weight: bold; color: #222; text-align: right; }
         .barra-fundo { background: #e0e0e0; border-radius: 4px; height: 8px; overflow: hidden; }
         .barra-preenchida { height: 100%; border-radius: 4px; transition: width 0.5s ease, background 0.5s ease; }
+
+        /* Legenda flutuante - canto inferior direito (status + comandos) */
+        #hud-legenda { position: absolute !important; bottom: 15px !important; right: 15px !important; left: auto !important; z-index: 20; background: #252423; color: #fff; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); padding: 12px 16px; font-size: 12px; max-width: 230px; display: none; border-top: 4px solid #0078D4; }
+        #hud-legenda h4 { margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #aaa; }
+        #hud-legenda .legenda-cor-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        #hud-legenda .swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; }
+        #hud-legenda .legenda-secao + .legenda-secao { margin-top: 12px; padding-top: 10px; border-top: 1px solid #444; }
+        #hud-legenda .tecla { display: inline-block; background: #3a3a3a; border: 1px solid #555; border-radius: 4px; padding: 1px 7px; font-family: 'Consolas', monospace; font-weight: bold; margin-right: 3px; font-size: 11px; }
     </style>
 
     <!-- Bibliotecas Three.js -->
@@ -108,6 +116,21 @@
     </div>
 
     <div id="canvas-container"></div>
+
+    <!-- Legenda flutuante: cores de status + comandos da visão 1ª pessoa -->
+    <div id="hud-legenda">
+        <div class="legenda-secao" id="legenda-status" style="display:none;">
+            <h4>Legenda de Status</h4>
+            <div class="legenda-cor-item"><span class="swatch" style="background:#2ecc71;"></span> Normal / OK</div>
+            <div class="legenda-cor-item"><span class="swatch" style="background:#f1c40f;"></span> Estoque Baixo</div>
+            <div class="legenda-cor-item"><span class="swatch" style="background:#e74c3c;"></span> Crítico</div>
+        </div>
+        <div class="legenda-secao" id="legenda-controles" style="display:none;">
+            <h4>Controles (1ª Pessoa)</h4>
+            <div style="margin-bottom:6px;"><span class="tecla">W</span><span class="tecla">A</span><span class="tecla">S</span><span class="tecla">D</span> mover</div>
+            <div>Mouse (arrastar) — olhar ao redor</div>
+        </div>
+    </div>
 
     <script>
         // --- 1. ESTADO E COMUNICAÇÃO COM O POWER BI ---
@@ -519,11 +542,21 @@
         });
 
         // --- 8. CONTROLES DE VISÃO E MOVIMENTO ---
+        function atualizarHudLegenda() {
+            const painel = document.getElementById('hud-legenda');
+            const secStatus = document.getElementById('legenda-status');
+            const secControles = document.getElementById('legenda-controles');
+            secStatus.style.display = modoStatusAtivo ? 'block' : 'none';
+            secControles.style.display = modoWASD ? 'block' : 'none';
+            painel.style.display = (modoStatusAtivo || modoWASD) ? 'block' : 'none';
+        }
+
         document.getElementById('btn-status').addEventListener('click', function() {
             modoStatusAtivo = !modoStatusAtivo;
             this.innerText = modoStatusAtivo ? 'Modo: Status (Ligado)' : 'Modo: Status (Desligado)';
             this.style.background = modoStatusAtivo ? '#107c41' : '#8e44ad';
             aplicarFiltrosECores();
+            atualizarHudLegenda();
         });
 
         document.getElementById('btn-frente').addEventListener('click', () => {
@@ -563,6 +596,7 @@
                 controls.target.copy(centroGeral);
             }
             controls.update();
+            atualizarHudLegenda();
         });
 
         window.addEventListener('keydown', (e) => {
